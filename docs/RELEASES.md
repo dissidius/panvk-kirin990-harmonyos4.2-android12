@@ -4,6 +4,18 @@ Every release is one AdrenoTools zip that installs in all supported apps. Downlo
 [GitHub releases](https://github.com/soulexit/panvk-kirin990/releases). Up to 1.2.2 the
 versions carried a `-winlator` suffix.
 
+## 1.2.7 (pre-release)
+
+```text
+zip:     panvk-g76-kirin990-1.2.7.zip
+sha256:  e80dd2694520827584a1696b948d5a01d86a0c9396eb5cc6d4736b1fe4569c37
+armsx2:  panvk-g76-kirin990-1.2.7-armsx2.zip
+sha256:  b3ea35876a2819ed7ef1055cc6d33783917f9e0e41ef31f6d9ff65fe09d5ef73
+.so:     357b0207dca08ff78463b6926f64ebe29b4277a146f8379ad85dc51da1429e67
+libGL_memfd.so: 32100a7900cffddcc708ea4ed1b2557404b5fa26a5c9e06d0f9cd74bbf1ef4d2
+source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0060 (tree e08b7cec4c)
+```
+
 ## 1.2.6 (pre-release)
 
 ```text

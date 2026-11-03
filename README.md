@@ -18,20 +18,20 @@ predecessors: [`panvk-kirin990-termux`](https://github.com/soulexit/panvk-kirin9
 
 ## Download
 
-Latest: **1.2.6** (pre-release) from
+Latest: **1.2.7** (pre-release) from
 [releases](https://github.com/soulexit/panvk-kirin990/releases):
-`panvk-g76-kirin990-1.2.6.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
-Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.6-armsx2.zip` for ARMSX2 (same
+`panvk-g76-kirin990-1.2.7.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
+Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.7-armsx2.zip` for ARMSX2 (same
 driver, library named as ARMSX2 requires).
 
 ```text
-zip:     panvk-g76-kirin990-1.2.6.zip
-sha256:  2e2ac8741d9764c64f2817d5ee60c8393c284bed252ddb8662b8b014368e6a63
-armsx2:  panvk-g76-kirin990-1.2.6-armsx2.zip
-sha256:  f0b81b2a2d0c45a21a45d62ef031f36393eb4b1d2da7d0add8dfbda01d17c66c
-.so:     65eae575e6af3292100d91d7e26c52c1cce11fa0591f75e391ca29796ee57204
+zip:     panvk-g76-kirin990-1.2.7.zip
+sha256:  e80dd2694520827584a1696b948d5a01d86a0c9396eb5cc6d4736b1fe4569c37
+armsx2:  panvk-g76-kirin990-1.2.7-armsx2.zip
+sha256:  b3ea35876a2819ed7ef1055cc6d33783917f9e0e41ef31f6d9ff65fe09d5ef73
+.so:     357b0207dca08ff78463b6926f64ebe29b4277a146f8379ad85dc51da1429e67
 libGL_memfd.so: 32100a7900cffddcc708ea4ed1b2557404b5fa26a5c9e06d0f9cd74bbf1ef4d2
-source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0057 (tree 9932fa0c18)
+source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0060 (tree e08b7cec4c)
 ```
 
 Older releases and hashes: [docs/RELEASES.md](docs/RELEASES.md). Changes: [CHANGELOG.md](CHANGELOG.md).
@@ -78,7 +78,7 @@ driver version and what you saw.
 
 ## Driver at a glance
 
-| | Previous Kirin 990 Winlator pack | This driver (1.2.6) |
+| | Previous Kirin 990 Winlator pack | This driver (1.2.7) |
 |---|---|---|
 | DXVK 2.x requirements (robustness2, nullDescriptor, …) | missing | all 56 hard requirements present |
 | Geometry shaders / tessellation / transform feedback | advertised but not implemented (GPU hang) | implemented (emulated), tests pass |
@@ -93,7 +93,7 @@ driver version and what you saw.
 | SoC / GPU | Kirin 990 / Mali-G76 MC16 (Bifrost, arch v7) |
 | Android | 10 (EMUI 12), API 29, kernel 4.14.116 |
 | Kernel GPU driver | stock `mali_kbase`, JM, uAPI 11.16 (56-byte atoms) |
-| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.6 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
+| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.7 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
 
 Also checked on a Galaxy A51 (Exynos 9611, Mali-G72 MP3, AOSP 16, kbase uAPI 11.35):
 same build runs; all tests pass (see *Results*).
@@ -175,6 +175,9 @@ requests linear buffers itself).
 | 0055 | Compiler: drivers can push their own uniform buffers into registers without gallium's blend-constant slot. |
 | **0056** | **ARMSX2 (PCSX2):** rasterization-order attachment access on v6/v7 (PCSX2 no longer splits every pass for a render-target read-back; Kingdom Hearts 5–8 → 27–30 FPS); tile-local in-pass barriers don't split; overlap on by default with 128 MiB heap halves, barriers from fragment to vertex/compute work wait for the fragment job; dynamic uniform-buffer words pushed into registers for PCSX2-based apps; `panvk_env.txt` read without `fopen()` (AdrenoTools redirects it); opt-in CPU index ranges and direct textures; GPU-timestamp and wait-site profiling. |
 | 0057 | The driver logs the directory it was loaded from (for `BOX64_LIBGL`, Winlator OpenGL on Android 10). |
+| 0058 | kbase: a growable buffer's committed size can be queried and reduced; atoms in flight are counted without blocking. |
+| 0059 | The opt-in CPU index range skips index buffers the GPU can write. |
+| **0060** | **Less RAM:** workgroup memory shared across command buffers (NieR −103 MiB); varying memory given back when the GPU is idle (`PANVK_V7_VARY_TRIM=0` turns it off). |
 | 0005, 0006, 0008, 0009, 0011, 0013–0018 | Diagnostics (off unless enabled in `panvk_env.txt`): swapchain pixel check, extension hiding, failed-job batch description, GPU-time profiler, wait/latency statistics. |
 
 Not in this series but required for Winlator: Android-only WSI (`-Dplatforms=android`).
@@ -217,6 +220,8 @@ swapchain and every DXVK version fails at `vkAcquireNextImageKHR`.
   more GPU work per frame (indirect draws, vertex pulling, more passes and queries), and the
   Huawei governor clocks the GPU at ~260 MHz for it instead of ~580 MHz.
 
+- **NieR:Automata uses a lot of RAM** (1.15 GB DXVK + up to ~450 MiB driver in heavy scenes on
+  1.2.7) and shows occasional fragment-job address-range faults (open).
 - **ARMSX2: Kingdom Hearts 27–30 FPS vs 35–41 on Huawei's driver.** PCSX2 waits for the GPU
   twice a frame (three command buffers in flight); our GPU time per pass is higher, mostly on
   the fragment side. Not the clock (Huawei's driver reaches 38 FPS at 166 MHz), not memory types,
@@ -264,6 +269,7 @@ the driver loads; a leading `!` overrides a variable the app already set.
 | `PANVK_G76_DIAG=1` | log whether the imported swapchain buffers contain non-black pixels |
 | `PANVK_HIDE_EXTS=VK_EXT_a,VK_KHR_b` | hide device extensions |
 | `MESA_SPIRV_DUMP_PATH=/sdcard/Download/spv` + `!MESA_SHADER_CACHE_DISABLE=true` | dump every SPIR-V shader (named by hash; failed jobs log the hash) |
+| `PANVK_V7_VARY_TRIM=0` / `PANVK_JM_DEV_WLS=0` | keep varying memory after heavy scenes / one workgroup-memory buffer per command buffer (before 1.2.7) |
 | `PANVK_OVERLAP=0` | turn off the overlap of a pass's vertex/tiler work with the previous fragment work (on by default from 1.2.5) |
 | `PANVK_V7_PUSH_UBO=1` / `=0` | force uniform-buffer constants into registers on/off (default: on for PCSX2-based apps) |
 | `PANVK_V7_CPU_INDEX_RANGE=1` / `PANVK_V7_DIRECT_TEX_ALL=1` | experiments, off by default: index ranges found on the CPU (wrong if indices are written after the draw is recorded) / textures indexed straight from descriptor memory |

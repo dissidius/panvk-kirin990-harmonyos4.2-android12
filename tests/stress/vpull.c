@@ -149,6 +149,15 @@ int main(int argc, char **argv) {
    for (int f = 0; f < frames; f++) dx7_run(&t, p, vb, rec, NULL);
    clock_gettime(CLOCK_MONOTONIC, &b2);
    double ms = ((b2.tv_sec - a.tv_sec) * 1e3 + (b2.tv_nsec - a.tv_nsec) / 1e6) / frames;
+   /* The last frame must draw what the first did (catches memory the driver
+    * gave back while the GPU still needed it). */
+   int drawn_last = 0;
+   for (int y = 0; y < RT_H; y += 8)
+      for (int x = 0; x < RT_W; x += 8) if (!dx7_is_blue(dx7_px(&t, x, y))) drawn_last++;
+   if (drawn_last != drawn) {
+      printf("FAIL last frame drew %d samples, first %d\n", drawn_last, drawn);
+      drawn = 0;
+   }
    printf("%s pull=%u indirect=%d noindex=%d pad=%u draws=%u indices/draw=%u window=%u: %.2f ms/frame, %.3f ms/draw (%d samples drawn)\n",
           drawn ? "PASS" : "FAIL", pull, indirect, noindex, ib_pad, ndraws, per, window, ms, ms / ndraws, drawn);
    return drawn ? 0 : 1;

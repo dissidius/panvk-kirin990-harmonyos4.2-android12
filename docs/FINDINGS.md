@@ -298,3 +298,22 @@ AIO OpenGL cube: 104 FPS. The GPU has work ~half the time; per frame the process
 the GPU ~6 times in Winlator's `libvulkan_wrapper.so` (~1.7 ms each) and ~3 times in Zink.
 Each frame also has a full-window compute pass (~0.8 ms) and the cube goes through the
 geometry-shader emulation (Zink emulates quads with a geometry shader).
+
+## 13. 1.2.7: RAM
+
+The profile's "driver ~531 MiB" was address space: the tiler heaps, varying buffers and
+tessellation scratch are GROW_ON_GPF regions that start with 1 MiB and grow on GPU page faults.
+`KBASE_IOCTL_MEM_QUERY` (commit size) gives the real figure. Idle or in light apps the driver
+holds ~16 MiB. In NieR:Automata (Winlator, DXVK) the phone went from 3.7 to 0.46 GB free:
+DXVK's own allocations 1.15 GB; the driver ~550 MiB, of which indirect varying buffers 334 MiB
+(one per overlap half, sized by the heaviest batch each served, never shrunk), workgroup local
+storage 103 MiB (one copy per command buffer and half), thread scratch 48, command descriptors
+45, the rest ~18.
+
+Workgroup memory is now device-wide, like thread scratch: −103 MiB. A ring shared by both
+varying halves was rejected: GPU-fault growth never frees pages, so a ring whose write position
+moves through it ends up committed in full. Instead the varying buffers are cut in half when no
+atom is in flight (`KBASE_IOCTL_MEM_COMMIT`, which the stock kernel accepts for GROW_ON_GPF
+regions) with a backing-off interval. An A/B run showed NieR's fragment-job address-range faults
+(event 0x5A/0x5B) happen with and without the workgroup change (4 vs 1 in a minute): an older,
+open issue.

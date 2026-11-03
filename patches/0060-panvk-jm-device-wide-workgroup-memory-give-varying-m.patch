@@ -1,0 +1,289 @@
+From 827223a37f262e7cd12ab7b04ff647db858c90d8 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Wed, 4 Nov 2026 00:15:56 +0300
+Subject: [PATCH 60/60] panvk/jm: device-wide workgroup memory, give varying
+ memory back
+
+Memory measured in NieR:Automata (Winlator, DXVK) on the Kirin 990: the
+driver held ~550 MiB, the phone dropped to 0.46 GB free.
+
+- Workgroup local storage is device-wide, like thread local storage
+  already is (jm-v7 118). The vertex/tiler and compute chains of a
+  device run one atom at a time on job slot 1 and fragment jobs use
+  none, so batches never use it at the same time. Per command buffer
+  NieR held 103 MiB of it over DXVK's command buffers; now ~2 MiB.
+  PANVK_JM_DEV_WLS=0 restores the per-command-buffer buffers.
+- The indirect varying buffers (one per overlap half) grow on GPU page
+  faults to the largest batch they served and kept those pages (NieR:
+  143 + 225 MiB, in menus too). When no atom is in flight, each check
+  interval a buffer above 32 MiB is cut to half (16 MiB minimum); if it
+  has grown back to 3/4 of its size by the next check the interval
+  doubles (10 s up to 160 s), else it halves (jm-v7 119).
+  PANVK_V7_VARY_TRIM=0 turns it off. Checked with a benchmark drawing
+  ~180 MiB of varyings per frame: cut and regrown repeatedly, the last
+  frame draws the same as the first, no GPU faults.
+- GPU profile: the physical memory of the growable buffers (tiler heaps,
+  varyings per half, tessellation), next to the reserved sizes.
+
+CTS regression sample: 18 846 pass, the two known cases.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c | 41 ++++++--
+ src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c  | 99 ++++++++++++++++++++
+ src/panfrost/vulkan/panvk_device.h           |  2 +
+ src/panfrost/vulkan/panvk_vX_device.c        |  4 +
+ 4 files changed, 139 insertions(+), 7 deletions(-)
+
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+index 60c8b07..a9a5a4b 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+@@ -122,16 +122,31 @@ dev_tls_release(struct panvk_cmd_buffer *cmdbuf)
+    util_dynarray_clear(&cmdbuf->dev_tls_refs);
+ }
+ 
++/* jm-v7 118: workgroup local storage is device-wide too. The vertex/tiler
++ * and compute chains of a device run one atom at a time on job slot 1 and
++ * fragment jobs use none, so batches never use it at the same time. Per
++ * command buffer (one per heap half) NieR:Automata held 103 MiB of it over
++ * DXVK's command buffers. PANVK_JM_DEV_WLS=0 restores those buffers. */
++static bool
++jm_dev_wls_on(void)
++{
++   static int v = -1;
++   if (p_atomic_read(&v) < 0)
++      p_atomic_set(&v, debug_get_bool_option("PANVK_JM_DEV_WLS", true));
++   return p_atomic_read(&v);
++}
++
+ static uint64_t
+-get_device_tls(struct panvk_cmd_buffer *cmdbuf, uint64_t size)
++get_device_scratch(struct panvk_cmd_buffer *cmdbuf, struct util_dynarray *bos,
++                   uint64_t size)
+ {
+    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+    uint64_t addr = 0;
+ 
+    simple_mtx_lock(&dev->tls.lock);
+    struct panvk_priv_bo *cur =
+-      util_dynarray_num_elements(&dev->tls.bos, struct panvk_priv_bo *)
+-         ? util_dynarray_top(&dev->tls.bos, struct panvk_priv_bo *)
++      util_dynarray_num_elements(bos, struct panvk_priv_bo *)
++         ? util_dynarray_top(bos, struct panvk_priv_bo *)
+          : NULL;
+ 
+    if (!cur || pan_kmod_bo_size(cur->bo) < size) {
+@@ -143,13 +158,13 @@ get_device_tls(struct panvk_cmd_buffer *cmdbuf, uint64_t size)
+              PANVK_MEM_DEV_TLS) == VK_SUCCESS) {
+          /* Command buffers that use the outgrown BOs hold their own
+           * references. */
+-         util_dynarray_foreach(&dev->tls.bos, struct panvk_priv_bo *, old) {
++         util_dynarray_foreach(bos, struct panvk_priv_bo *, old) {
+             p_atomic_add(&panvk_mem_stats.dev_tls_freed_B,
+                          pan_kmod_bo_size((*old)->bo));
+             panvk_priv_bo_unref(*old);
+          }
+-         util_dynarray_clear(&dev->tls.bos);
+-         util_dynarray_append(&dev->tls.bos, bo);
++         util_dynarray_clear(bos);
++         util_dynarray_append(bos, bo);
+          cur = bo;
+       } else {
+          cur = NULL;
+@@ -169,6 +184,13 @@ get_device_tls(struct panvk_cmd_buffer *cmdbuf, uint64_t size)
+    return addr;
+ }
+ 
++static uint64_t
++get_device_tls(struct panvk_cmd_buffer *cmdbuf, uint64_t size)
++{
++   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
++   return get_device_scratch(cmdbuf, &dev->tls.bos, size);
++}
++
+ void
+ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
+ {
+@@ -463,7 +485,12 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
+    if (batch->tlsinfo.wls.size) {
+       assert(batch->wls_total_size);
+       const unsigned h = batch->heap_half & 1;
+-      if (panvk_v7_tls_share() && cmdbuf->tls_half[h].wls_ptr &&
++      if (jm_dev_wls_on()) {
++         struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
++         batch->tlsinfo.wls.ptr =
++            get_device_scratch(cmdbuf, &dev->tls.wls_bos,
++                               ALIGN_POT(batch->wls_total_size, 4096));
++      } else if (panvk_v7_tls_share() && cmdbuf->tls_half[h].wls_ptr &&
+           cmdbuf->tls_half[h].wls_size >= batch->wls_total_size) {
+          batch->tlsinfo.wls.ptr = cmdbuf->tls_half[h].wls_ptr;
+       } else {
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+index 5501b69..6683501 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+@@ -259,6 +259,16 @@ panvk_gprof_on(void)
+    return on;
+ }
+ 
++/* The device whose growable buffers the memory line reports (set at
++ * submit; one device per process in the apps profiled). */
++static struct panvk_device *panvk_gprof_dev;
++
++static double
++gprof_committed_mib(struct panvk_priv_bo *bo)
++{
++   return bo ? kbase_kmod_bo_committed_bytes(bo->bo) / 1048576.0 : 0;
++}
++
+ static void
+ panvk_gprof_report_locked(uint64_t now)
+ {
+@@ -315,6 +325,23 @@ panvk_gprof_report_locked(uint64_t now)
+                 "%.0f:%s", panvk_mem_stats.app_B / 1048576.0,
+                 (unsigned long long)panvk_mem_stats.app_count,
+                 panvk_mem_stats.app_peak_B / 1048576.0, drv / 1048576.0, buf);
++      /* "driver" above counts reserved sizes; the growable (GROW_ON_GPF)
++       * buffers only have the pages the GPU reached, never given back. */
++      struct panvk_device *d = panvk_gprof_dev;
++      if (d) {
++         const double th = gprof_committed_mib(d->tiler_heap) +
++                           gprof_committed_mib(d->tiler_heap2);
++         const double vb0 = gprof_committed_mib(d->indirect_varying_buffer);
++         const double vb1 = gprof_committed_mib(d->indirect_varying_buffer2);
++         const double vb = vb0 + vb1;
++         const double ta = gprof_committed_mib(d->tess_arena);
++         const double gs = gprof_committed_mib(d->tess_gs_scratch[0]) +
++                           gprof_committed_mib(d->tess_gs_scratch[1]);
++         mesa_logi("GPROF mem committed MiB (growable): tiler heaps %.1f, "
++                   "indirect varyings %.1f (%.1f + %.1f), tess arena %.1f, "
++                   "tess/GS scratch %.1f, total %.1f",
++                   th, vb, vb0, vb1, ta, gs, th + vb + ta + gs);
++      }
+       const uint64_t nd = p_atomic_xchg(&panvk_mem_stats.draws_indexed, 0);
+       const uint64_t ni = p_atomic_xchg(&panvk_mem_stats.draw_indices, 0);
+       mesa_logi("GPROF draws: %.0f indexed draws/s recorded, avg %.0f indices",
+@@ -769,12 +796,84 @@ panvk_jm_kbase_wait_atoms(void *data, const uint64_t targets[PANVK_KBASE_SYNC_TA
+    return VK_SUCCESS;
+ }
+ 
++#if PAN_ARCH < 9
++/* jm-v7 119: the indirect varying buffers (one per overlap half) grow on
++ * GPU page faults to the largest batch they served and kept those pages:
++ * NieR:Automata held 143 + 225 MiB after its heaviest passes, in menus too.
++ * When no atom is in flight, every check interval each buffer above 32 MiB
++ * is cut to half (16 MiB minimum). If it has grown back to near its size
++ * by the next check, the memory is in use: the interval doubles (10 s up
++ * to 160 s), else it halves again. At most one regrowth per interval in a
++ * heavy scene. PANVK_V7_VARY_TRIM=0 turns it off.
++ */
++struct vary_trim_state {
++   uint64_t before;   /* commit before the last cut, 0 = none */
++   unsigned interval; /* seconds */
++   uint64_t next_ns;
++};
++
++static void
++panvk_v7_vary_trim(struct panvk_device *dev)
++{
++   static int on = -1;
++   if (on < 0) {
++      const char *e = getenv("PANVK_V7_VARY_TRIM");
++      on = !(e && e[0] == '0');
++   }
++   if (!on)
++      return;
++
++   static struct vary_trim_state st[2] = {{0, 10, 0}, {0, 10, 0}};
++   static uint64_t next_check;
++   const uint64_t now = os_time_get_nano();
++   if (now < next_check)
++      return;
++   next_check = now + 1000000000ull;
++
++   struct panvk_priv_bo *bufs[2] = {dev->indirect_varying_buffer,
++                                    dev->indirect_varying_buffer2};
++   bool due = false;
++   for (unsigned i = 0; i < 2; i++)
++      due = due || (bufs[i] && now >= st[i].next_ns);
++   if (!due || kbase_kmod_atoms_in_flight(dev->kmod.dev))
++      return;
++
++   const uint64_t min_keep = 16ull << 20, step = 2ull << 20;
++   for (unsigned i = 0; i < 2; i++) {
++      struct vary_trim_state *t = &st[i];
++      if (!bufs[i] || now < t->next_ns)
++         continue;
++      const uint64_t c = kbase_kmod_bo_committed_bytes(bufs[i]->bo);
++      if (t->before) {
++         /* Grown back to 3/4 of what was cut: the scene needs it. */
++         t->interval = c * 4 >= t->before * 3 ? MIN2(t->interval * 2, 160)
++                                              : MAX2(t->interval / 2, 10);
++      }
++      t->next_ns = now + (uint64_t)t->interval * 1000000000ull;
++      t->before = 0;
++      if (c <= 2 * min_keep)
++         continue;
++      const uint64_t target = ALIGN_POT(MAX2(c / 2, min_keep), step);
++      if (kbase_kmod_bo_set_committed_bytes(bufs[i]->bo, target)) {
++         t->before = c;
++         mesa_logi("panvk: varying buffer %u: %" PRIu64 " -> %" PRIu64
++                   " MiB committed (next check in %u s)",
++                   i, c >> 20, target >> 20, t->interval);
++      }
++   }
++}
++#endif
++
+ VkResult
+ panvk_per_arch(gpu_queue_submit)(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
+ {
+    panvk_gprof_submits++;
+    struct panvk_gpu_queue *queue = container_of(vk_queue, struct panvk_gpu_queue, vk);
+    struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
++   panvk_gprof_dev = dev;
++#if PAN_ARCH < 9
++   panvk_v7_vary_trim(dev);
++#endif
+    (void)0;
+ 
+    uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT] = {0};
+diff --git a/src/panfrost/vulkan/panvk_device.h b/src/panfrost/vulkan/panvk_device.h
+index 9e23c87..3e59720 100644
+--- a/src/panfrost/vulkan/panvk_device.h
++++ b/src/panfrost/vulkan/panvk_device.h
+@@ -215,6 +215,8 @@ struct panvk_device {
+    struct {
+       simple_mtx_t lock;
+       struct util_dynarray bos;
++      /* The same for workgroup local storage (jm-v7 118). */
++      struct util_dynarray wls_bos;
+    } tls;
+ 
+    struct {
+diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
+index ccc0854..1f27dad 100644
+--- a/src/panfrost/vulkan/panvk_vX_device.c
++++ b/src/panfrost/vulkan/panvk_vX_device.c
+@@ -136,6 +136,9 @@ panvk_device_cleanup_tls(struct panvk_device *dev)
+    util_dynarray_foreach(&dev->tls.bos, struct panvk_priv_bo *, bo)
+       panvk_priv_bo_unref(*bo);
+    util_dynarray_fini(&dev->tls.bos);
++   util_dynarray_foreach(&dev->tls.wls_bos, struct panvk_priv_bo *, bo)
++      panvk_priv_bo_unref(*bo);
++   util_dynarray_fini(&dev->tls.wls_bos);
+    simple_mtx_destroy(&dev->tls.lock);
+ }
+ 
+@@ -880,6 +883,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+    panvk_device_init_mempools(device);
+    simple_mtx_init(&device->tls.lock, mtx_plain);
+    util_dynarray_init(&device->tls.bos, NULL);
++   util_dynarray_init(&device->tls.wls_bos, NULL);
+ 
+ #if PAN_ARCH >= 9
+    if (PANVK_DEBUG(GPU_PRERAST) || device->vk.enabled_features.fillModeNonSolid ||
+-- 
+2.43.0
+

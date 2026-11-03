@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.2.7 (testing) — 2026-11-04
+
+**Less RAM.** Measured in NieR:Automata (Winlator, DXVK): the driver held ~550 MiB and the
+phone fell to 0.46 GB free in heavy scenes.
+
+- **Workgroup memory is shared across command buffers** (0060): −103 MiB in NieR (DXVK keeps
+  many command buffers, each had its own copy). `PANVK_JM_DEV_WLS=0` restores the old way.
+- **Varying memory is given back** (0058, 0060): the buffers that hold vertex outputs grow to
+  the heaviest pass a game draws (NieR: 143 + 225 MiB) and kept that memory for the rest of the
+  session. When the GPU is idle the driver now halves them every 10 s; if a scene needs the
+  memory again it waits longer before the next cut (up to 160 s), so heavy scenes pay at most one
+  slower frame per interval. `PANVK_V7_VARY_TRIM=0` turns it off. Not yet tried in a game; tested
+  with a benchmark drawing ~180 MiB of varyings per frame (cut and regrown repeatedly, drawing
+  unchanged, no GPU faults).
+- The opt-in CPU index range (`PANVK_V7_CPU_INDEX_RANGE=1`) now skips index buffers the GPU can
+  write (0059), the rule the Exynos 9611 driver uses: fixes the one CTS case that failed with it.
+- GPU profile: physical memory of the driver's growable buffers next to their reserved sizes
+  (the "driver" figure counts address space, not RAM).
+- CTS regression sample on this code: 18 846 pass plus the two known cases; workgroup-memory
+  cases identical to 1.2.6.
+
 ## 1.2.6 (testing) — 2026-10-31
 
 **OpenGL in Winlator on Android 10.** Winlator's OpenGL (Zink on PanVK) didn't load on the P40:

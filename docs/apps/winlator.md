@@ -39,11 +39,11 @@ From 1.2.6 the zip contains `libGL_memfd.so` ([source](../../tools/winlator-gl/)
 provides `memfd_create()` (the kernel has the system call) and loads Winlator's real
 `libGL.so.1`. To use it, in the container (or shortcut) settings:
 
-1. **Graphics Driver**: `PanVK-G76-Kirin990-1.2.6`, and **Zink** for OpenGL.
+1. **Graphics Driver**: `PanVK-G76-Kirin990-1.2.7`, and **Zink** for OpenGL.
 2. **Environment Variables** → add `BOX64_LIBGL` with the value (one line, no spaces):
 
    ```text
-   /data/data/com.winlator.cmod/files/contents/adrenotools/PanVK-G76-Kirin990-1.2.6/libGL_memfd.so
+   /data/data/com.winlator.cmod/files/contents/adrenotools/PanVK-G76-Kirin990-1.2.7/libGL_memfd.so
    ```
 
    The directory is named after the driver version: after updating the driver, change the
