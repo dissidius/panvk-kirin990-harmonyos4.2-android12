@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.2.8 (testing) — 2026-11-04
+
+Fixes from a Winlator test session with three games.
+
+- **Fixed: GPU hang in Assassin's Creed IV: Black Flag** (0061). Compute workgroups larger than
+  the Mali-G76 holds are run as several copies per hardware thread. Only function-local variables
+  were made per copy; DXVK keeps the D3D registers in module-level variables, so the copies
+  overwrote each other's values across a barrier. A 512-thread shader computed a loop bound from
+  such a value and never finished. Likely to affect other D3D11 games with large compute
+  workgroups. New test `tests/lwg/lwg_global.c`: 49 151 of 61 440 results wrong before, 0 after.
+- **Fixed: flickering textures in Assassin's Creed** (D3D9, DXVK 1.10.3) (0062). Overlap (a
+  pass's vertex work during the previous pass's fragment work, on by default since 1.2.5) missed a
+  dependency there. It is now on by default only for PCSX2-based emulators (ARMSX2), where it was
+  measured; `PANVK_OVERLAP=1` turns it on elsewhere.
+- Notes from the same session: AC4 then stops at its intro video: Wine reports `GStreamer doesn't
+  support video conversion` (a Wine/container issue; skip the intro videos). Ori and the Blind
+  Forest DE runs with DXVK 3.1.1; with 1.10.3-async it glitches without any driver error (use
+  3.1.1).
+- CTS on the release build: regression sample 18 846 pass plus the two known cases; workgroup
+  memory 548, large workgroups and subgroups 407, sync2 1 301, rasterization order 122 pass, tile
+  barriers the same 21 known failures as 1.2.4; no new failures.
+
 ## 1.2.7 (testing) — 2026-11-04
 
 **Less RAM.** Measured in NieR:Automata (Winlator, DXVK): the driver held ~550 MiB and the

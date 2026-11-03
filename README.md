@@ -18,20 +18,20 @@ predecessors: [`panvk-kirin990-termux`](https://github.com/soulexit/panvk-kirin9
 
 ## Download
 
-Latest: **1.2.7** (pre-release) from
+Latest: **1.2.8** (pre-release) from
 [releases](https://github.com/soulexit/panvk-kirin990/releases):
-`panvk-g76-kirin990-1.2.7.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
-Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.7-armsx2.zip` for ARMSX2 (same
+`panvk-g76-kirin990-1.2.8.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
+Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.8-armsx2.zip` for ARMSX2 (same
 driver, library named as ARMSX2 requires).
 
 ```text
-zip:     panvk-g76-kirin990-1.2.7.zip
-sha256:  e80dd2694520827584a1696b948d5a01d86a0c9396eb5cc6d4736b1fe4569c37
-armsx2:  panvk-g76-kirin990-1.2.7-armsx2.zip
-sha256:  b3ea35876a2819ed7ef1055cc6d33783917f9e0e41ef31f6d9ff65fe09d5ef73
-.so:     357b0207dca08ff78463b6926f64ebe29b4277a146f8379ad85dc51da1429e67
+zip:     panvk-g76-kirin990-1.2.8.zip
+sha256:  117611221b12ee8ea8b157f798715ec6e443879432fde15b6a8488c4ee3b266e
+armsx2:  panvk-g76-kirin990-1.2.8-armsx2.zip
+sha256:  a3cb4f1d6005665d8179dabfd38296f36a3f15ccc8dfe95d10344dd6ceff9710
+.so:     20d44847f0dd91bd42ef0a3baced666ff749ec7eff4b5b71bbba8cc2a7deb79f
 libGL_memfd.so: 32100a7900cffddcc708ea4ed1b2557404b5fa26a5c9e06d0f9cd74bbf1ef4d2
-source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0060 (tree e08b7cec4c)
+source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0062 (tree d7aee3f6ab)
 ```
 
 Older releases and hashes: [docs/RELEASES.md](docs/RELEASES.md). Changes: [CHANGELOG.md](CHANGELOG.md).
@@ -63,6 +63,9 @@ the driver's profiler; the newest version each was tested with.
 | Winlator | NieR:Automata | D3D11 (DXVK-Sarek 1.12) | 1.2.2 | **playable but slow**: ~20 FPS menus, ~10–14 FPS in game (GPU-bound vertex shading); needs `heap_memory_percent=0.42` |
 | Winlator | NieR:Automata | D3D11 (DXVK 1.10.3-async) | 1.2.4 | menu 47 FPS; one save fails to load (also on 1.2.3: Sarek gets stuck, 1.10.3 crashes in game code) |
 | Winlator | NieR:Automata | D3D11 (DXVK 2.7.1 gplasync) | 1.2.4 | intro and menu correct, one save loads and renders, **another save goes black** (GPU fault in its first heavy pass, open). Needs BCn emulation **off** |
+| Winlator | Assassin's Creed | D3D9 (DXVK 1.10.3-async, ARM64EC) | 1.2.8 | runs; flickering textures before 1.2.8 (overlap) |
+| Winlator | Assassin's Creed IV: Black Flag | D3D11 (DXVK) | 1.2.8 | GPU hang fixed in 1.2.8; then stops at the intro video (Wine: GStreamer video conversion missing) |
+| Winlator | Ori and the Blind Forest DE | D3D11 (DXVK 3.1.1, ARM64EC) | 1.2.7 | **works**; with DXVK 1.10.3-async it glitches and doesn't reach the game |
 | Winlator | Need for Speed: Most Wanted (low) | D3D9 | 1.2.0 | runs; ~22 FPS on 1.1.0, per-draw cost cut 2.4× in 1.2.0 |
 | Winlator | Mortal Kombat Komplete Edition | D3D9, 32-bit | 1.2.2 | **crashes** (R6025 / page fault in the game under Wine WoW64; no driver errors); ~13 FPS before that |
 | Winlator | DmC: Devil May Cry | D3D9, 32-bit | 1.2.2 | **crashes** at start (R6025, same WoW64 issue) |
@@ -78,7 +81,7 @@ driver version and what you saw.
 
 ## Driver at a glance
 
-| | Previous Kirin 990 Winlator pack | This driver (1.2.7) |
+| | Previous Kirin 990 Winlator pack | This driver (1.2.8) |
 |---|---|---|
 | DXVK 2.x requirements (robustness2, nullDescriptor, …) | missing | all 56 hard requirements present |
 | Geometry shaders / tessellation / transform feedback | advertised but not implemented (GPU hang) | implemented (emulated), tests pass |
@@ -93,7 +96,7 @@ driver version and what you saw.
 | SoC / GPU | Kirin 990 / Mali-G76 MC16 (Bifrost, arch v7) |
 | Android | 10 (EMUI 12), API 29, kernel 4.14.116 |
 | Kernel GPU driver | stock `mali_kbase`, JM, uAPI 11.16 (56-byte atoms) |
-| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.7 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
+| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.8 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
 
 Also checked on a Galaxy A51 (Exynos 9611, Mali-G72 MP3, AOSP 16, kbase uAPI 11.35):
 same build runs; all tests pass (see *Results*).
@@ -178,6 +181,8 @@ requests linear buffers itself).
 | 0058 | kbase: a growable buffer's committed size can be queried and reduced; atoms in flight are counted without blocking. |
 | 0059 | The opt-in CPU index range skips index buffers the GPU can write. |
 | **0060** | **Less RAM:** workgroup memory shared across command buffers (NieR −103 MiB); varying memory given back when the GPU is idle (`PANVK_V7_VARY_TRIM=0` turns it off). |
+| **0061** | **Large compute workgroups:** module-level variables (DXVK's registers) are per logical invocation too; fixes the GPU hang in Assassin's Creed IV. |
+| 0062 | Overlap on by default only for PCSX2-based emulators (Assassin's Creed flickered with it). |
 | 0005, 0006, 0008, 0009, 0011, 0013–0018 | Diagnostics (off unless enabled in `panvk_env.txt`): swapchain pixel check, extension hiding, failed-job batch description, GPU-time profiler, wait/latency statistics. |
 
 Not in this series but required for Winlator: Android-only WSI (`-Dplatforms=android`).
@@ -226,8 +231,8 @@ swapchain and every DXVK version fails at `vkAcquireNextImageKHR`.
   twice a frame (three command buffers in flight); our GPU time per pass is higher, mostly on
   the fragment side. Not the clock (Huawei's driver reaches 38 FPS at 166 MHz), not memory types,
   not the driver's CPU time.
-- **Overlap is on again (1.2.5)** with 128 MiB tiler heap halves; NieR's heaviest scenes have not
-  been re-checked with it. If large frames lose the device, try `PANVK_OVERLAP=0` and report it.
+- **Overlap** (on for PCSX2-based emulators only since 1.2.8) misses a dependency in Assassin's
+  Creed (D3D9) that makes textures flicker; not yet found.
 - **Eden: Zelda: Echoes of Wisdom is GPU-bound** (16–20 FPS): the emulator issues ~85 render
   passes per frame, three quarters with one draw, and each pass loads and stores its tiles.
   Passes on the same target can't be merged (they are feedback loops: the next pass samples
@@ -270,7 +275,7 @@ the driver loads; a leading `!` overrides a variable the app already set.
 | `PANVK_HIDE_EXTS=VK_EXT_a,VK_KHR_b` | hide device extensions |
 | `MESA_SPIRV_DUMP_PATH=/sdcard/Download/spv` + `!MESA_SHADER_CACHE_DISABLE=true` | dump every SPIR-V shader (named by hash; failed jobs log the hash) |
 | `PANVK_V7_VARY_TRIM=0` / `PANVK_JM_DEV_WLS=0` | keep varying memory after heavy scenes / one workgroup-memory buffer per command buffer (before 1.2.7) |
-| `PANVK_OVERLAP=0` | turn off the overlap of a pass's vertex/tiler work with the previous fragment work (on by default from 1.2.5) |
+| `PANVK_OVERLAP=1` / `=0` | force the overlap of a pass's vertex/tiler work with the previous fragment work on/off (default: on for PCSX2-based emulators only, from 1.2.8) |
 | `PANVK_V7_PUSH_UBO=1` / `=0` | force uniform-buffer constants into registers on/off (default: on for PCSX2-based apps) |
 | `PANVK_V7_CPU_INDEX_RANGE=1` / `PANVK_V7_DIRECT_TEX_ALL=1` | experiments, off by default: index ranges found on the CPU (wrong if indices are written after the draw is recorded) / textures indexed straight from descriptor memory |
 | `PANVK_GRALLOC_GUESS_LINEAR=0` | refuse buffers without mapper metadata (old behaviour) |

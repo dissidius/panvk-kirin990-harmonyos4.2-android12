@@ -317,3 +317,20 @@ atom is in flight (`KBASE_IOCTL_MEM_COMMIT`, which the stock kernel accepts for 
 regions) with a backing-off interval. An A/B run showed NieR's fragment-job address-range faults
 (event 0x5A/0x5B) happen with and without the workgroup change (4 vs 1 in a minute): an older,
 open issue.
+
+## 14. 1.2.8: Winlator game session
+
+**Assassin's Creed IV hang.** The driver's failure history named a compute dispatch, one
+workgroup, hardware size 128 (shader hash 7c704db6), stopped by the kernel after ~3 s (event
+0x4), then 117 jobs failing behind it. `MESA_SPIRV_DUMP_PATH` gave the SPIR-V: `LocalSize 512`,
+a barrier, then a loop whose bound is computed from `r0`, a module-level Private variable (DXVK
+keeps every D3D register in one). The large-workgroup split (0012) clones function temporaries
+per copy but left module-level temporaries shared, so three of every four logical invocations
+read another copy's `r0`. `tests/lwg/lwg_global.c` (the reduction test with its per-thread value
+moved to a global) reproduced it: 49 151 of 61 440 wrong; `nir_lower_global_vars_to_local()`
+before the split fixes it.
+
+**Assassin's Creed flicker.** No GPU errors and no varying trims; A/B with switches in
+`panvk_env.txt`: overlap and the in-pass barrier skip off → no flicker; overlap on, skip off →
+flicker. The dependency overlap misses here is not yet identified (the barrier rule of 1.2.5 did
+not catch it); overlap is now default only for PCSX2-based emulators.

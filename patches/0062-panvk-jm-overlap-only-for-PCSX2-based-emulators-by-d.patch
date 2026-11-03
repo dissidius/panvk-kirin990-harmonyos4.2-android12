@@ -1,0 +1,151 @@
+From db6b74c68bafda8d16cdefccf8093f2c2f2e1a40 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Wed, 4 Nov 2026 01:04:14 +0300
+Subject: [PATCH 62/62] panvk/jm: overlap only for PCSX2-based emulators by
+ default
+
+Overlap (a batch's vertex/tiler chain during the previous fragment job,
+on by default since 1.2.5) made Assassin's Creed (D3D9, DXVK 1.10.3)
+flicker through a dependency the barrier rule does not see; off, the
+flicker is gone. It is now on by default only for PCSX2-based apps
+(ARMSX2, AetherSX2, NetherSX2), where it was measured; PANVK_OVERLAP=1/0
+forces it on/off. One definition (panvk_v7_overlap_on()) serves the
+queue, the command buffers and the device, and the PCSX2 check is shared
+with the uniform-buffer push.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c | 15 ++------
+ src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c  | 16 ++-------
+ src/panfrost/vulkan/panvk_v7_knobs.h         | 37 ++++++++++++++------
+ 3 files changed, 32 insertions(+), 36 deletions(-)
+
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+index a9a5a4b..4c40239 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+@@ -654,23 +654,12 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
+    return VK_SUCCESS;
+ }
+ 
+-/* v67b: vertex/tiler work overlaps the previous pass (PANVK_OVERLAP=0: off) */
++/* v67b: vertex/tiler work overlaps the previous pass (panvk_v7_overlap_on()) */
+ #include <stdlib.h>
+ static __attribute__((unused)) bool
+ panvk_overlap_enabled(void)
+ {
+-   static int on = -1;
+-   if (on < 0) {
+-      const char *e = getenv("PANVK_OVERLAP");
+-      /* Default on: the next batch's vertex/tiler jobs run during this
+-       * one's fragment job. A pass costs ~0.8 ms on v7 without it, ~0.36
+-       * with (30 one-draw passes; Kingdom Hearts in ARMSX2 has ~28 passes
+-       * a frame). On v6/v7 each half has its own 128 MiB heap BO (jm-v7
+-       * 099); the old shared 128 MiB, 64 MiB a half, ran out of tiler
+-       * memory on large frames. PANVK_OVERLAP=0 turns it off. */
+-      on = !(e && e[0] == '0');
+-   }
+-   return on;
++   return panvk_v7_overlap_on();
+ }
+ 
+ VkResult
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+index 6683501..eac8a43 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+@@ -63,23 +63,13 @@ static inline int panvk_trace_on_(void) { static int v = -1; if (v < 0) { const
+  * so a future vk_sync_wait() on queue->sync (or a signal semaphore) does
+  * the actual blocking, off the submission's critical path. */
+ 
+-/* v67b: vertex/tiler work overlaps the previous pass (PANVK_OVERLAP=0: off) */
++/* v67b: vertex/tiler work overlaps the previous pass (panvk_v7_overlap_on()) */
+ #include <stdlib.h>
++#include "panvk_v7_knobs.h"
+ static __attribute__((unused)) bool
+ panvk_overlap_enabled(void)
+ {
+-   static int on = -1;
+-   if (on < 0) {
+-      const char *e = getenv("PANVK_OVERLAP");
+-      /* Default on: the next batch's vertex/tiler jobs run during this
+-       * one's fragment job. A pass costs ~0.8 ms on v7 without it, ~0.36
+-       * with (30 one-draw passes; Kingdom Hearts in ARMSX2 has ~28 passes
+-       * a frame). On v6/v7 each half has its own 128 MiB heap BO (jm-v7
+-       * 099); the old shared 128 MiB, 64 MiB a half, ran out of tiler
+-       * memory on large frames. PANVK_OVERLAP=0 turns it off. */
+-      on = !(e && e[0] == '0');
+-   }
+-   return on;
++   return panvk_v7_overlap_on();
+ }
+ 
+ /* Dependency type on an earlier GPU atom of this queue. Within one
+diff --git a/src/panfrost/vulkan/panvk_v7_knobs.h b/src/panfrost/vulkan/panvk_v7_knobs.h
+index c957045..59895f0 100644
+--- a/src/panfrost/vulkan/panvk_v7_knobs.h
++++ b/src/panfrost/vulkan/panvk_v7_knobs.h
+@@ -102,20 +102,27 @@ panvk_v7_knob_on(const char *name, int *cache)
+  * on/off everywhere (changes the compiled shaders).
+  */
+ #include "util/u_process.h"
++/* A PCSX2-based PS2 emulator (ARMSX2, AetherSX2, NetherSX2). */
++static inline bool
++panvk_v7_is_pcsx2_app(void)
++{
++   static int v = -1;
++   if (v < 0) {
++      const char *name = util_get_process_name();
++      v = name && (strstr(name, "armsx2") || strstr(name, "pcsx2") ||
++                   strstr(name, "PCSX2") || strstr(name, "aethersx2") ||
++                   strstr(name, "nethersx2"));
++   }
++   return v;
++}
++
+ static inline bool
+ panvk_v7_knob_push_ubo(void)
+ {
+    static int v = -1;
+    if (v < 0) {
+       const char *e = getenv("PANVK_V7_PUSH_UBO");
+-      if (e && e[0]) {
+-         v = e[0] != '0';
+-      } else {
+-         const char *name = util_get_process_name();
+-         v = name && (strstr(name, "armsx2") || strstr(name, "pcsx2") ||
+-                      strstr(name, "PCSX2") || strstr(name, "aethersx2") ||
+-                      strstr(name, "nethersx2"));
+-      }
++      v = (e && e[0]) ? e[0] != '0' : panvk_v7_is_pcsx2_app();
+    }
+    return v;
+ }
+@@ -176,12 +183,22 @@ panvk_v7_tls_share(void)
+    return panvk_v7_knob_on("PANVK_V7_TLS_SHARE", &v);
+ }
+ 
+-/* PANVK_OVERLAP (v67b, default off on Bifrost), as panvk_overlap_enabled(). */
++/* PANVK_OVERLAP (v67b): the next batch's vertex/tiler jobs run during this
++ * one's fragment job (a pass ~0.8 ms on v7 without it, ~0.36 with; Kingdom
++ * Hearts in ARMSX2 has ~28 passes a frame). On by default only for
++ * PCSX2-based emulators (jm-v7 120): Assassin's Creed (D3D9, DXVK 1.10)
++ * flickered with it, through a dependency the barrier rule
++ * (panvk_dependency_needs_frag_done()) does not see. PANVK_OVERLAP=1/0
++ * forces it on/off. */
+ static inline bool
+ panvk_v7_overlap_on(void)
+ {
+    static int v = -1;
+-   return panvk_v7_knob_on("PANVK_OVERLAP", &v);
++   if (v < 0) {
++      const char *e = getenv("PANVK_OVERLAP");
++      v = (e && e[0]) ? e[0] != '0' : panvk_v7_is_pcsx2_app();
++   }
++   return v;
+ }
+ 
+ /* jm-v7 106: per-batch budget (MiB) of v6/v7 tessellation memory that is
+-- 
+2.43.0
+
