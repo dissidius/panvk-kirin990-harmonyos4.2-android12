@@ -18,23 +18,28 @@ predecessors: [`panvk-kirin990-termux`](https://github.com/soulexit/panvk-kirin9
 
 ## Download
 
-Latest: **1.2.8** (pre-release) from
+Latest: **1.2.9** (pre-release) from
 [releases](https://github.com/soulexit/panvk-kirin990/releases):
-`panvk-g76-kirin990-1.2.8.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
-Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.8-armsx2.zip` for ARMSX2 (same
+`panvk-g76-kirin990-1.2.9.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
+Winlator's OpenGL on Android 10), and `panvk-g76-kirin990-1.2.9-armsx2.zip` for ARMSX2 (same
 driver, library named as ARMSX2 requires).
 
 ```text
-zip:     panvk-g76-kirin990-1.2.8.zip
-sha256:  117611221b12ee8ea8b157f798715ec6e443879432fde15b6a8488c4ee3b266e
-armsx2:  panvk-g76-kirin990-1.2.8-armsx2.zip
-sha256:  a3cb4f1d6005665d8179dabfd38296f36a3f15ccc8dfe95d10344dd6ceff9710
-.so:     20d44847f0dd91bd42ef0a3baced666ff749ec7eff4b5b71bbba8cc2a7deb79f
+zip:     panvk-g76-kirin990-1.2.9.zip
+sha256:  b90e5fe6fa26b4f4fba74ca05b8c9add63024be8b0b082be93798260faaade50
+armsx2:  panvk-g76-kirin990-1.2.9-armsx2.zip
+sha256:  0c14711b73d4f2cbc80fd99a11ad86db42b0df075580dc49753db76b54620fbe
+.so:     b166a289658965ce93c0fb77900d62d84b11a8142bfff61b2f85836c57077888
 libGL_memfd.so: 32100a7900cffddcc708ea4ed1b2557404b5fa26a5c9e06d0f9cd74bbf1ef4d2
-source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0062 (tree d7aee3f6ab)
+panvk-report.exe: e18e081f6ffce469929cc841c2399c3d77f646ef3ef6e1ba08122598e5a70795
+source:  Mesa 5a07217f + zenithblue 917b9b3b series + patches/0001-0063 (tree a09d3de6ad)
 ```
 
 Older releases and hashes: [docs/RELEASES.md](docs/RELEASES.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+
+**Something not working?** Run `panvk-report.exe` (on the releases page) in the Winlator container
+and attach its zip to a [bug report](https://github.com/soulexit/panvk-kirin990/issues/new/choose):
+[docs/REPORTING.md](docs/REPORTING.md).
 
 ## Install
 
@@ -81,7 +86,7 @@ driver version and what you saw.
 
 ## Driver at a glance
 
-| | Previous Kirin 990 Winlator pack | This driver (1.2.8) |
+| | Previous Kirin 990 Winlator pack | This driver (1.2.9) |
 |---|---|---|
 | DXVK 2.x requirements (robustness2, nullDescriptor, …) | missing | all 56 hard requirements present |
 | Geometry shaders / tessellation / transform feedback | advertised but not implemented (GPU hang) | implemented (emulated), tests pass |
@@ -96,7 +101,7 @@ driver version and what you saw.
 | SoC / GPU | Kirin 990 / Mali-G76 MC16 (Bifrost, arch v7) |
 | Android | 10 (EMUI 12), API 29, kernel 4.14.116 |
 | Kernel GPU driver | stock `mali_kbase`, JM, uAPI 11.16 (56-byte atoms) |
-| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.8 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
+| Driver identity | `panvk`, `PanVK-kbase G76-k990 1.2.9 (Mesa 26.3.0-devel)`, Vulkan 1.3.363, 165 device extensions |
 
 Also checked on a Galaxy A51 (Exynos 9611, Mali-G72 MP3, AOSP 16, kbase uAPI 11.35):
 same build runs; all tests pass (see *Results*).
@@ -183,6 +188,7 @@ requests linear buffers itself).
 | **0060** | **Less RAM:** workgroup memory shared across command buffers (NieR −103 MiB); varying memory given back when the GPU is idle (`PANVK_V7_VARY_TRIM=0` turns it off). |
 | **0061** | **Large compute workgroups:** module-level variables (DXVK's registers) are per logical invocation too; fixes the GPU hang in Assassin's Creed IV. |
 | 0062 | Overlap on by default only for PCSX2-based emulators (Assassin's Creed flickered with it). |
+| 0063 | GPU errors (failed jobs, the jobs before them) written to `Download/panvk_errors.txt` for bug reports; collected by `tools/panvk-report`. |
 | 0005, 0006, 0008, 0009, 0011, 0013–0018 | Diagnostics (off unless enabled in `panvk_env.txt`): swapchain pixel check, extension hiding, failed-job batch description, GPU-time profiler, wait/latency statistics. |
 
 Not in this series but required for Winlator: Android-only WSI (`-Dplatforms=android`).
@@ -274,6 +280,7 @@ the driver loads; a leading `!` overrides a variable the app already set.
 | `PANVK_G76_DIAG=1` | log whether the imported swapchain buffers contain non-black pixels |
 | `PANVK_HIDE_EXTS=VK_EXT_a,VK_KHR_b` | hide device extensions |
 | `MESA_SPIRV_DUMP_PATH=/sdcard/Download/spv` + `!MESA_SHADER_CACHE_DISABLE=true` | dump every SPIR-V shader (named by hash; failed jobs log the hash) |
+| `PANVK_ERRORS_FILE=0` | don't write GPU errors to `panvk_errors.txt` |
 | `PANVK_V7_VARY_TRIM=0` / `PANVK_JM_DEV_WLS=0` | keep varying memory after heavy scenes / one workgroup-memory buffer per command buffer (before 1.2.7) |
 | `PANVK_OVERLAP=1` / `=0` | force the overlap of a pass's vertex/tiler work with the previous fragment work on/off (default: on for PCSX2-based emulators only, from 1.2.8) |
 | `PANVK_V7_PUSH_UBO=1` / `=0` | force uniform-buffer constants into registers on/off (default: on for PCSX2-based apps) |

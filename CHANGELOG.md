@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.9 (testing) — 2026-11-05
+
+**Bug reports made easy.** New: `panvk-report.exe`, attached to this release. Run it in the
+Winlator container where a game has a problem: it saves `panvk-report-<date>.zip` in the phone's
+Download folder with everything needed to look into it (Vulkan device and driver version, the
+container's graphics settings, D3D11/DXVK, two GPU self-tests, Winlator and DXVK logs, the driver's
+error log), and a **Hints** section pointing out settings known to cause trouble (BCn emulation,
+Box64 compatibility mode, sync frame, a container not using PanVK). Then open an issue with the
+new **Bug report** form and attach the zip. How-to: [docs/REPORTING.md](docs/REPORTING.md).
+
+- **The driver writes GPU errors to `Download/panvk_errors.txt`** (0063): failed GPU jobs with
+  the kernel's event code and the jobs that ran just before, with a header naming the program and
+  driver version (else the app's own `Android/data/<package>/files/`; restarted past 1 MiB).
+  Before, they were only in logcat. `PANVK_ERRORS_FILE=0` turns it off.
+- The tool's large-workgroup self-test fails on drivers before 1.2.8 (the Assassin's Creed IV
+  bug) and passes on 1.2.8 and newer.
+- CTS on the release build: regression sample 18 846 pass plus the two known cases; workgroup
+  memory 548, large workgroups and subgroups 407, sync2 1 301 pass; no new failures. The job
+  history behind the error log costs no measurable time (many-pass benchmark within noise).
+
 ## 1.2.8 (testing) — 2026-11-04
 
 Fixes from a Winlator test session with three games.

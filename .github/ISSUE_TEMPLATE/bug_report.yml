@@ -1,0 +1,62 @@
+name: Bug report (game or app problem)
+description: Something doesn't work or looks wrong with this driver. Attach the panvk-report zip.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! In Winlator, run **panvk-report.exe** in the same container where the
+        problem happens (see [docs/REPORTING.md](https://github.com/soulexit/panvk-kirin990/blob/main/docs/REPORTING.md)).
+        It saves `panvk-report-<date>.zip` in your phone's **Download** folder. Drag that zip into the
+        "Report zip" box below.
+  - type: input
+    id: device
+    attributes:
+      label: Phone
+      description: Model and chip, e.g. "Huawei P40, Kirin 990".
+    validations:
+      required: true
+  - type: input
+    id: driver
+    attributes:
+      label: Driver version
+      description: As shown in the app's driver list, e.g. "PanVK-G76-Kirin990-1.2.9".
+    validations:
+      required: true
+  - type: dropdown
+    id: app
+    attributes:
+      label: App
+      options:
+        - Winlator
+        - Eden
+        - ARMSX2
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game or program
+      description: Name, and the DXVK/VKD3D/WineD3D version the container uses.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you see (crash, black screen, flicker, freeze, low FPS...) and when (menu, loading, a certain scene).
+    validations:
+      required: true
+  - type: textarea
+    id: zip
+    attributes:
+      label: Report zip
+      description: Drag panvk-report-<date>.zip here. For Eden and ARMSX2, attach panvk_errors.txt from the app's files folder instead (see docs/REPORTING.md).
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, whether an older driver version worked, other settings you changed.
