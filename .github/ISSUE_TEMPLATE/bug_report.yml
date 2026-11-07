@@ -29,6 +29,7 @@ body:
       label: App
       options:
         - Winlator
+        - GameNative
         - Eden
         - ARMSX2
         - Other

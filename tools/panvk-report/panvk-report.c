@@ -1,5 +1,5 @@
 /* panvk-report: collects what we need to look into a PanVK problem in
- * Winlator, into one zip in Android's Download folder.
+ * Winlator or GameNative, into one zip in Android's Download folder.
  *
  * Run it in the container (and settings) where the problem happens. It
  * gathers: Wine/Windows/host versions, RAM and CPUs, the container's
@@ -7,7 +7,8 @@
  * options), the Vulkan device as Wine sees it (driver version, features,
  * extensions, limits, memory), what D3D11 (DXVK) creates, two GPU
  * self-tests, and the files panvk_env.txt, panvk_errors.txt (written by
- * the driver on GPU faults), Winlator's newest logs and *.log files next
+ * the driver on GPU faults), Winlator's or GameNative's newest logs (lines
+ * that may hold account data removed) and *.log files next
  * to the tool. Nothing leaves the phone: the user attaches the zip to an
  * issue at https://github.com/soulexit/panvk-kirin990/issues.
  *
@@ -32,7 +33,7 @@
 
 #include "shaders.h"
 
-#define TOOL_VERSION "1.2"
+#define TOOL_VERSION "1.3"
 #define ISSUES_URL "https://github.com/soulexit/panvk-kirin990/issues/new/choose"
 
 /* Growing text buffer. */
@@ -219,6 +220,71 @@ read_file_tail(const char *path, size_t cap, size_t *out_len)
    return p;
 }
 
+/* Words that mark a log line as possibly holding account data (GameNative
+ * logs Steam sign-in; any app's logcat can hold tokens). Lowercase. */
+static const char *const secret_words[] = {
+   "password", "passwd", "token", "login_key", "loginkey", "accountname",
+   "account_name", "steamguard", "auth_code", "authcode", "cookie", "bearer",
+   "secret",
+};
+
+static bool
+line_has_secret(const char *s, size_t n)
+{
+   char low[512];
+   for (size_t off = 0; off < n; off += sizeof(low) - 32) {
+      /* Overlapping windows so a word split by a window edge is still seen. */
+      size_t m = n - off < sizeof(low) - 1 ? n - off : sizeof(low) - 1;
+      for (size_t i = 0; i < m; i++) {
+         char c = s[off + i];
+         low[i] = c >= 'A' && c <= 'Z' ? c + 32 : c ? c : ' ';
+      }
+      low[m] = 0;
+      for (unsigned w = 0; w < sizeof(secret_words) / sizeof(secret_words[0]); w++)
+         if (strstr(low, secret_words[w]))
+            return true;
+      if (m < sizeof(low) - 1)
+         break;
+   }
+   return false;
+}
+
+/* Copy of p without lines that may hold account data, with SteamID64s (17
+ * digits starting 7656119) masked. */
+static struct buf
+scrub(const char *p, size_t n, unsigned *removed)
+{
+   static const char cut[] = "[line removed by panvk-report: may hold account data]\n";
+   struct buf out = {0};
+   size_t i = 0;
+   while (i < n) {
+      const char *nl = memchr(p + i, '\n', n - i);
+      size_t len = nl ? (size_t)(nl - (p + i)) + 1 : n - i;
+      if (line_has_secret(p + i, len)) {
+         buf_add(&out, cut, sizeof(cut) - 1);
+         (*removed)++;
+      } else {
+         for (size_t k = 0; k < len; k++) {
+            const char *q = p + i + k;
+            if (len - k >= 17 && !memcmp(q, "7656119", 7) &&
+                (k == 0 || q[-1] < '0' || q[-1] > '9')) {
+               size_t d = 7;
+               while (d < len - k && q[d] >= '0' && q[d] <= '9')
+                  d++;
+               if (d == 17) {
+                  buf_add(&out, "<steamid>", 9);
+                  k += 16;
+                  continue;
+               }
+            }
+            buf_add(&out, q, 1);
+         }
+      }
+      i += len;
+   }
+   return out;
+}
+
 static bool
 add_file(const char *zipname, const char *path, size_t cap)
 {
@@ -226,9 +292,15 @@ add_file(const char *zipname, const char *path, size_t cap)
    char *p = read_file_tail(path, cap, &n);
    if (!p)
       return false;
-   zip_add(zipname, p, n);
+   unsigned removed = 0;
+   struct buf clean = scrub(p, n, &removed);
    free(p);
-   R("  added %s (%zu bytes) from %s\n", zipname, n, path);
+   zip_add(zipname, clean.p ? clean.p : "", clean.len);
+   free(clean.p);
+   R("  added %s (%zu bytes) from %s", zipname, clean.len, path);
+   if (removed)
+      R(", %u line(s) removed as possible account data", removed);
+   R("\n");
    return true;
 }
 
@@ -261,6 +333,22 @@ dir_exists(const char *path)
    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+/* A folder in Android's shared storage (relative to /sdcard) as a DOS path. */
+static bool
+find_android_dir(const char *rel, char *out, size_t size)
+{
+   static const char *const roots[] = {"/storage/emulated/0", "/sdcard"};
+   for (unsigned i = 0; i < 2; i++) {
+      char u[MAX_PATH];
+      snprintf(u, sizeof(u), "%s/%s", roots[i], rel);
+      dos_path(u, out, size);
+      if (out[0] && dir_exists(out))
+         return true;
+   }
+   out[0] = 0;
+   return false;
+}
+
 /* Android's Download folder as a DOS path. */
 static bool
 find_download(char *out, size_t size)
@@ -281,6 +369,26 @@ static void
 section(const char *title)
 {
    R("\n=== %s ===\n", title);
+}
+
+enum host_app { APP_UNKNOWN, APP_WINLATOR, APP_GAMENATIVE };
+
+/* The Android app the container runs in, from its data paths in the
+ * environment (/data/user/0/<package>/...). */
+static enum host_app
+host_app(void)
+{
+   static const char *const vars[] = {"WINE_HOST_PATH", "WINEPREFIX", "WINE_HOST_HOME"};
+   for (unsigned i = 0; i < sizeof(vars) / sizeof(vars[0]); i++) {
+      const char *v = getenv(vars[i]);
+      if (!v)
+         continue;
+      if (strstr(v, "/app.gamenative/"))
+         return APP_GAMENATIVE;
+      if (strstr(v, "/com.winlator"))
+         return APP_WINLATOR;
+   }
+   return APP_UNKNOWN;
 }
 
 static void
@@ -319,6 +427,8 @@ collect_system(void)
         ms.ullAvailPhys >> 20);
    char exe[MAX_PATH];
    GetModuleFileNameA(NULL, exe, sizeof(exe));
+   static const char *const app_names[] = {"unknown", "Winlator", "GameNative"};
+   R("App: %s\n", app_names[host_app()]);
    R("Tool: panvk-report %s at %s\n", TOOL_VERSION, exe);
 }
 
@@ -845,16 +955,31 @@ collect_files(const char *download, const char *logdir)
       R("  no panvk_errors.txt in Download (no GPU faults recorded, or a "
         "driver older than 1.2.9)\n");
 
+   /* Only the logs of the app the tool runs in (a phone can have both). */
+   const enum host_app app = host_app();
    char wl[MAX_PATH];
-   dos_path("/storage/emulated/0/Winlator/logs", wl, sizeof(wl));
-   if (!wl[0] || !dir_exists(wl))
-      dos_path("/sdcard/Winlator/logs", wl, sizeof(wl));
-   if (wl[0] && dir_exists(wl)) {
-      if (!add_newest(wl, "*.txt", "winlator-logs", 3, 2 << 20))
-         R("  no Winlator logs (turn on logging in Winlator's settings)\n");
-   } else {
-      R("  Winlator log folder not reachable\n");
+   const bool winlator = app != APP_GAMENATIVE &&
+                         find_android_dir("Winlator/logs", wl, sizeof(wl));
+   if (winlator && !add_newest(wl, "*.txt", "winlator-logs", 3, 2 << 20))
+      R("  no Winlator logs (turn on logging in Winlator's settings)\n");
+
+   /* GameNative: Wine's log, crash logs, and the app log it saves to
+    * Download ("Save logs"). */
+   char gn[MAX_PATH];
+   const bool gamenative =
+      app != APP_WINLATOR &&
+      find_android_dir("Android/data/app.gamenative/files", gn, sizeof(gn));
+   if (gamenative) {
+      snprintf(p, sizeof(p), "%s\\wine_logs", gn);
+      unsigned n = add_newest(p, "*.log", "gamenative-logs/wine", 2, 2 << 20);
+      snprintf(p, sizeof(p), "%s\\crash_logs", gn);
+      n += add_newest(p, "*.txt", "gamenative-logs/crash", 2, 1 << 20);
+      n += add_newest(download, "app_logs_*.txt", "gamenative-logs/app", 1, 2 << 20);
+      if (!n)
+         R("  no GameNative logs (turn on logging in GameNative's settings)\n");
    }
+   if (!winlator && !gamenative)
+      R("  no Winlator or GameNative log folder reachable\n");
 
    char cwd[MAX_PATH];
    GetCurrentDirectoryA(sizeof(cwd), cwd);

@@ -4,10 +4,10 @@ If a game crashes, freezes, shows a black screen, flickers or runs much slower t
 with this driver, a report with the right logs lets us find the cause without guessing. This
 page shows how to make one in a couple of minutes.
 
-## Winlator: panvk-report.exe
+## Winlator and GameNative: panvk-report.exe
 
-`panvk-report.exe` is a small Windows program you run inside Winlator. It collects the
-information below into one zip and saves it in your phone's **Download** folder.
+`panvk-report.exe` is a small Windows program you run inside Winlator or GameNative. It collects
+the information below into one zip and saves it in your phone's **Download** folder.
 
 ### 1. Get the tool
 
@@ -21,14 +21,20 @@ Play the game until the problem happens, then close it. The driver records GPU e
 GPU jobs and what ran just before) in `Download/panvk_errors.txt` from version 1.2.9 on, and the
 tool picks that file up.
 
-Turn on Winlator's own logging if you can (Winlator settings → Debug / Enable logs): its logs go
-to `/sdcard/Winlator/logs/` and the tool includes the three newest.
+Turn on the app's own logging if you can:
+
+- **Winlator:** settings → Debug / Enable logs. Its logs go to `/sdcard/Winlator/logs/` and the
+  tool includes the three newest.
+- **GameNative:** turn on logging in its settings. The tool includes Wine's log
+  (`Android/data/app.gamenative/files/wine_logs/`), the two newest crash logs (`crash_logs/`) and
+  the newest app log GameNative saved to Download (`app_logs_*.txt`).
 
 ### 3. Run the tool in the same container
 
 Open the **same container** (or the game's shortcut), so the same driver, DXVK version and
-settings are in use. Start `panvk-report.exe` from Winlator's file manager or desktop (for
-example `D:\panvk-report.exe`). It takes a few seconds and then shows:
+settings are in use. In Winlator, start `panvk-report.exe` from the file manager or desktop (for
+example `D:\panvk-report.exe`). In GameNative, add `panvk-report.exe` as a custom game with the
+same container settings as the game, and start it. It takes a few seconds and then shows:
 
 ```text
 Saved panvk-report-20261105-201530.zip
@@ -53,13 +59,17 @@ into the **Report zip** box.
 | `panvk_env.txt` | Your driver options file, if you have one |
 | `panvk_errors.txt` | GPU errors recorded by the driver (1.2.9 and newer) |
 | `winlator-logs/` | The three newest Winlator logs |
+| `gamenative-logs/` | GameNative's Wine log, crash logs and saved app log |
 | `dxvk-logs/` | DXVK's log from the tool's own D3D11 test |
 | `local-logs/` | Up to five `*.log` files from the folder the tool ran in |
 
-The zip stays on your phone until you attach it. It contains no account names, passwords or
-files outside the list above, but Winlator logs include file paths and the names of the programs
-you ran; look through it before posting if that matters to you. Environment variables with
-`TOKEN`, `PASSWORD` or `SECRET` in them are never included.
+The zip stays on your phone until you attach it. It contains no files outside the list above.
+Logs include file paths and the names of the programs you ran, so look through the zip before
+posting if that matters to you. Environment variables with `TOKEN`, `PASSWORD` or `SECRET` in
+them are never included. GameNative signs in to Steam, so in every log the tool replaces lines
+that mention passwords, tokens, cookies, account names or Steam Guard with
+`[line removed by panvk-report: may hold account data]`, and masks Steam IDs as `<steamid>`;
+`report.txt` says how many lines were removed from each file.
 
 ### Hints
 

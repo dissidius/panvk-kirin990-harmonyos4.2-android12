@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **panvk-report 1.3: GameNative support.** In GameNative the tool collects Wine's log, the two
+  newest crash logs and the newest saved app log (`gamenative-logs/` in the zip), and it collects
+  only the logs of the app it runs in (`App:` line in `report.txt`). Lines in any log that mention
+  passwords, tokens, cookies, account names or Steam Guard are removed and Steam IDs masked, since
+  GameNative signs in to Steam. Tested in GameNative 1.4.0 with driver 1.2.9.
+- GameNative loads this driver (Adrenotools); the extension count on its own screen comes from
+  the stock Mali driver and doesn't change. Use `panvk-report.exe` or `DXVK_HUD=devinfo` to see
+  which driver a game uses.
+
 ## 1.2.9 (testing) — 2026-11-05
 
 **Bug reports made easy.** New: `panvk-report.exe`, attached to this release. Run it in the
