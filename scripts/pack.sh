@@ -12,6 +12,8 @@ T="$(mktemp -d)"
 cp "$SO" "$T/$LIB"
 GL="$(dirname "$SO")/libGL_memfd.so"
 if [ "$LAYOUT" != armsx2 ] && [ -f "$GL" ]; then cp "$GL" "$T/"; fi
+# The Mesa version the driver was built from, e.g. "26.3.0-devel".
+MESA_VER="$(strings "$SO" | sed -n 's/.*(Mesa \([0-9][0-9.]*-[a-z]*\) (git-.*/\1/p' | head -1)"
 cat > "$T/meta.json" <<JSON
 {
   "schemaVersion": 1,
@@ -20,7 +22,7 @@ cat > "$T/meta.json" <<JSON
   "author": "soulexit",
   "packageVersion": "$VER",
   "vendor": "Mesa",
-  "driverVersion": "Mesa 26.3.0-devel / PanVK-kbase G76-k990 $VER",
+  "driverVersion": "Mesa ${MESA_VER:-unknown} / PanVK-kbase G76-k990 $VER",
   "minApi": 29,
   "libraryName": "$LIB"
 }
