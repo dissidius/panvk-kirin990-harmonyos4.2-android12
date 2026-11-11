@@ -3,7 +3,7 @@ name: PanVK HarmonyOS 4.2 experimental ARM64 build
 on:
   workflow_dispatch:
   push:
-    branches: [harmony42-experimental-build, harmony42-atom72-test]
+    branches: [harmony42-experimental-build, harmony42-atom72-test, harmony42-rotation-compat]
     paths:
       - '.github/workflows/build-harmony42.yml'
       - 'harmony42/**'
@@ -70,8 +70,11 @@ jobs:
       - name: Apply test of 72-byte full JM atom layout on Kirin 990
         run: python3 harmony42/apply_atom72.py "$GITHUB_WORKSPACE/work/mesa/src/panfrost/lib/kmod/kbase_kmod.c"
 
+      - name: Apply targeted Huawei ARMSX2 rotation compatibility
+        run: python3 harmony42/apply_rotation_compat.py "$GITHUB_WORKSPACE/work/mesa/src/panfrost/vulkan/panvk_physical_device.c"
+
       - name: Cross-compile Android ARM64 Vulkan library
-        run: sh scripts/build-android.sh "$GITHUB_WORKSPACE/work" '1.3.0-h42-atom72-v1'
+        run: sh scripts/build-android.sh "$GITHUB_WORKSPACE/work" '1.3.0-h42-atom72-rotfix1'
 
       - name: Build Winlator OpenGL memfd compatibility library
         shell: bash
@@ -88,12 +91,12 @@ jobs:
           # Repack standard variant after building the OpenGL shim: it is
           # automatically included by pack.sh, but not in the ARMSX2 variant.
           sh scripts/pack.sh "$GITHUB_WORKSPACE/work/dist/libvulkan_panfrost.so" \
-             '1.3.0-h42-atom72-v1' "$GITHUB_WORKSPACE/work/dist"
+             '1.3.0-h42-atom72-rotfix1' "$GITHUB_WORKSPACE/work/dist"
           sh scripts/pack.sh "$GITHUB_WORKSPACE/work/dist/libvulkan_panfrost.so" \
-             '1.3.0-h42-atom72-v1' "$GITHUB_WORKSPACE/work/dist" armsx2
-          unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-v1.zip" |
+             '1.3.0-h42-atom72-rotfix1' "$GITHUB_WORKSPACE/work/dist" armsx2
+          unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-rotfix1.zip" |
             grep -Fx 'libGL_memfd.so'
-          if unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-v1-armsx2.zip" |
+          if unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-rotfix1-armsx2.zip" |
              grep -q 'libGL_memfd.so'; then
             echo "Unexpected Winlator shim inside ARMSX2 driver" >&2
             exit 1
@@ -105,7 +108,7 @@ jobs:
       - name: Upload drivers
         uses: actions/upload-artifact@v4
         with:
-          name: panvk-h42-atom72-v1-with-gl-arm64
+          name: panvk-h42-atom72-rotfix1-with-gl-arm64
           path: |
             work/dist/*.zip
             work/dist/SHA256SUMS
