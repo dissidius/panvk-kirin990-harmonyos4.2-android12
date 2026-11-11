@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 180
     env:
       PANVK_JOBS: '4'
+      LIBCLANG_PATH: /usr/lib/llvm-18/lib
+      CLANG_PATH: /usr/bin/clang-18
     steps:
       - name: Checkout source fork
         uses: actions/checkout@v4
