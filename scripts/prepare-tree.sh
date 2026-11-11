@@ -15,7 +15,13 @@ mkdir -p "$WORK"
 if [ ! -d "$WORK/zenithblue/.git" ]; then
   git clone -q https://github.com/zenithblue-oss/panvk-kbase-android "$WORK/zenithblue"
 fi
-git -C "$WORK/zenithblue" checkout -q "$ZB_COMMIT"
+# Pin the host-tool scripts, fetching the historical tree explicitly.
+# A full clone can occasionally omit the pinned tree from a partial/cached pack
+# on CI runners; an explicit fetch forces the tree objects to be materialized.
+if ! git -C "$WORK/zenithblue" cat-file -e "$ZB_COMMIT^{tree}" 2>/dev/null; then
+  git -C "$WORK/zenithblue" fetch --no-tags --depth 1 origin "$ZB_COMMIT"
+fi
+git -C "$WORK/zenithblue" checkout --detach -q "$ZB_COMMIT"
 if [ ! -d "$WORK/mesa/.git" ]; then
   git init -q "$WORK/mesa"
   git -C "$WORK/mesa" remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
