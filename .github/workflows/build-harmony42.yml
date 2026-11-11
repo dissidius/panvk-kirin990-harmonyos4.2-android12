@@ -1,0 +1,83 @@
+name: PanVK HarmonyOS 4.2 experimental ARM64 build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [harmony42-experimental-build]
+    paths:
+      - '.github/workflows/build-harmony42.yml'
+      - 'harmony42/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: panvk-harmony42-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PANVK_JOBS: '4'
+    steps:
+      - name: Checkout source fork
+        uses: actions/checkout@v4
+
+      - name: Install host build requirements
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential git python3 python3-pip python3-venv \
+            ninja-build meson pkg-config cmake curl unzip zip xxd \
+            clang-18 llvm-18-dev libclang-18-dev libclc-18-dev \
+            llvm-spirv-18 libllvmspirvlib-18-dev \
+            glslang-tools libdrm-dev libexpat1-dev libelf-dev \
+            libwayland-dev wayland-protocols libx11-dev libxext-dev \
+            libxfixes-dev libxrandr-dev libxrender-dev libxshmfence-dev \
+            libxcb1-dev libxcb-dri3-dev libxcb-present-dev libxcb-randr0-dev \
+            libxcb-shm0-dev libxcb-sync-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev zlib1g-dev
+          python3 -m venv /tmp/panvk-venv
+          /tmp/panvk-venv/bin/pip install --upgrade meson ninja mako pyyaml packaging
+          echo '/tmp/panvk-venv/bin' >> "$GITHUB_PATH"
+
+      - name: Download Android NDK r28c
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 -o /tmp/android-ndk.zip \
+            https://dl.google.com/android/repository/android-ndk-r28c-linux.zip
+          sudo unzip -q /tmp/android-ndk.zip -d /opt
+          echo 'ANDROID_NDK_ROOT=/opt/android-ndk-r28c' >> "$GITHUB_ENV"
+
+      - name: Prepare pinned Mesa 27 and PanVK 1.3.0 patches
+        run: sh scripts/prepare-tree.sh "$GITHUB_WORKSPACE/work"
+
+      - name: Instrument HarmonyOS kbase JOB_SUBMIT EINVAL
+        run: python3 harmony42/apply_harmony42.py "$GITHUB_WORKSPACE/work/mesa/src/panfrost/lib/kmod/kbase_kmod.c"
+
+      - name: Cross-compile Android ARM64 Vulkan library
+        run: sh scripts/build-android.sh "$GITHUB_WORKSPACE/work" '1.3.0-h42-diag1'
+
+      - name: Pack ARMSX2 and standard variants
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sh scripts/pack.sh "$GITHUB_WORKSPACE/work/dist/libvulkan_panfrost.so" \
+             '1.3.0-h42-diag1' "$GITHUB_WORKSPACE/work/dist" armsx2
+          cd "$GITHUB_WORKSPACE/work/dist"
+          sha256sum *.zip > SHA256SUMS
+          ls -lh *.zip
+
+      - name: Upload drivers
+        uses: actions/upload-artifact@v4
+        with:
+          name: panvk-h42-diag1-arm64
+          path: |
+            work/dist/*.zip
+            work/dist/SHA256SUMS
+          if-no-files-found: error
