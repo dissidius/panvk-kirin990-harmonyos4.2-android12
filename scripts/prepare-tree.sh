@@ -22,6 +22,8 @@ if ! git -C "$WORK/zenithblue" cat-file -e "$ZB_COMMIT^{tree}" 2>/dev/null; then
   git -C "$WORK/zenithblue" fetch --no-tags --depth 1 origin "$ZB_COMMIT"
 fi
 git -C "$WORK/zenithblue" checkout --detach --force -q "$ZB_COMMIT"
+# When Actions restores only .git objects, reconstruct every tracked file.
+git -C "$WORK/zenithblue" reset --hard -q "$ZB_COMMIT"
 git -C "$WORK/zenithblue" clean -ffdx -q
 if [ ! -d "$WORK/mesa/.git" ]; then
   git init -q "$WORK/mesa"
