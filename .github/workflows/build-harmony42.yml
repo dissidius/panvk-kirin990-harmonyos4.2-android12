@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/build-harmony42.yml'
       - 'harmony42/**'
+      - 'scripts/prepare-tree.sh'
+      - 'scripts/build-android.sh'
 
 permissions:
   contents: read
