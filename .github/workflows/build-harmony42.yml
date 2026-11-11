@@ -73,12 +73,31 @@ jobs:
       - name: Cross-compile Android ARM64 Vulkan library
         run: sh scripts/build-android.sh "$GITHUB_WORKSPACE/work" '1.3.0-h42-atom72-v1'
 
+      - name: Build Winlator OpenGL memfd compatibility library
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sh tools/winlator-gl/build.sh "$GITHUB_WORKSPACE/work/dist"
+          test -s "$GITHUB_WORKSPACE/work/dist/libGL_memfd.so"
+          file "$GITHUB_WORKSPACE/work/dist/libGL_memfd.so"
+
       - name: Pack ARMSX2 and standard variants
         shell: bash
         run: |
           set -euxo pipefail
+          # Repack standard variant after building the OpenGL shim: it is
+          # automatically included by pack.sh, but not in the ARMSX2 variant.
+          sh scripts/pack.sh "$GITHUB_WORKSPACE/work/dist/libvulkan_panfrost.so" \
+             '1.3.0-h42-atom72-v1' "$GITHUB_WORKSPACE/work/dist"
           sh scripts/pack.sh "$GITHUB_WORKSPACE/work/dist/libvulkan_panfrost.so" \
              '1.3.0-h42-atom72-v1' "$GITHUB_WORKSPACE/work/dist" armsx2
+          unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-v1.zip" |
+            grep -Fx 'libGL_memfd.so'
+          if unzip -Z -1 "$GITHUB_WORKSPACE/work/dist/panvk-g76-kirin990-1.3.0-h42-atom72-v1-armsx2.zip" |
+             grep -q 'libGL_memfd.so'; then
+            echo "Unexpected Winlator shim inside ARMSX2 driver" >&2
+            exit 1
+          fi
           cd "$GITHUB_WORKSPACE/work/dist"
           sha256sum *.zip > SHA256SUMS
           ls -lh *.zip
@@ -86,7 +105,7 @@ jobs:
       - name: Upload drivers
         uses: actions/upload-artifact@v4
         with:
-          name: panvk-h42-atom72-v1-arm64
+          name: panvk-h42-atom72-v1-with-gl-arm64
           path: |
             work/dist/*.zip
             work/dist/SHA256SUMS
