@@ -22,6 +22,10 @@ tests found: [docs/TESTS.md](docs/TESTS.md) and [docs/CTS.md](docs/CTS.md).
 
 ## Download
 
+> **Stable releases:** [soulexit's PanVK driver](https://github.com/soulexit/panvk-bifrost-soulexit)
+> has the tested milestone builds with simpler names (1.0.000 = 1.3.0 here). This repository
+> gets every release, including testing builds.
+
 Latest: **1.3.0** (pre-release) from
 [releases](https://github.com/soulexit/panvk-kirin990/releases):
 `panvk-g76-kirin990-1.3.0.zip` for Winlator, Eden and other apps (includes `libGL_memfd.so` for
