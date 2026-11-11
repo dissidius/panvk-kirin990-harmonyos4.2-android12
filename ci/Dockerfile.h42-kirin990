@@ -1,0 +1,34 @@
+# Keep the already-tested H42 LLVM/Meson host toolchain, adding the
+# Rust, bindgen and platform headers required by the Kirin 990 Mesa 27 tree.
+# Rust is copied from the official pinned Rust image, not installed from
+# GitHub runner package mirrors on every driver build.
+FROM rust:1.99.1-slim-bookworm AS rust-toolchain
+FROM ghcr.io/dissidius/panvk-h42-builder:llvm18-v1
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup
+ENV PATH="/usr/local/cargo/bin:/opt/h42-venv/bin:/usr/lib/llvm-18/bin:${PATH}"
+RUN sed -i \
+      -e 's|https://archive.ubuntu.com/ubuntu|http://mirrors.mit.edu/ubuntu|g' \
+      -e 's|https://security.ubuntu.com/ubuntu|http://mirrors.mit.edu/ubuntu|g' \
+      /etc/apt/sources.list.d/ubuntu.sources \
+ && apt-get update -o Acquire::Languages=none -o Acquire::Retries=1 -o APT::Update::Error-Mode=any \
+ && apt-get install -y --no-install-recommends \
+      bindgen-0.71 cbindgen flex bison llvm-spirv-18 libclc-18-dev \
+      libexpat1-dev libelf-dev libwayland-dev wayland-protocols \
+      libxext-dev libxfixes-dev libxrender-dev libxcb-randr0-dev \
+      libxkbcommon-dev zlib1g-dev curl unzip xxd \
+ && ln -sf /usr/bin/bindgen-0.71 /usr/local/bin/bindgen \
+ && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    rustc --version; \
+    cargo --version; \
+    bindgen --version; \
+    cbindgen --version; \
+    command -v llvm-spirv-18; \
+    command -v glslangValidator; \
+    meson --version; \
+    python3 -c 'import mako, yaml, packaging'
+WORKDIR /workspace
