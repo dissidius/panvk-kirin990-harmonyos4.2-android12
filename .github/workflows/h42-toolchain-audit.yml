@@ -1,0 +1,26 @@
+name: H42 fourth-fork offline toolchain audit
+on:
+  push:
+    branches: [harmony42-rotation-universal-optimized-ci]
+    paths: [.github/workflows/h42-toolchain-audit.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check available tooling and NDK without downloads
+        shell: bash
+        run: |
+          set -u
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          for cmd in rustc cargo bindgen bindgen-0.71 cbindgen meson ninja clang-18 llvm-config-18 llvm-spirv-18 glslangValidator docker sdkmanager flex bison ccache zip unzip; do
+            echo "TOOL $cmd: $(command -v "$cmd" || echo MISSING)"
+          done
+          rustc --version || true
+          for root in "$ANDROID_HOME/ndk" /opt/android-ndk-r28c /usr/local/lib/android/sdk/ndk; do
+            if [ -d "$root" ]; then find "$root" -maxdepth 2 -name source.properties -print | head -n 12; fi
+          done
+          if [ -d "$HOME/.rustup" ]; then find "$HOME/.rustup/toolchains" -maxdepth 2 -type d | head -n 10; fi
