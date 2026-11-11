@@ -21,13 +21,21 @@ fi
 if ! git -C "$WORK/zenithblue" cat-file -e "$ZB_COMMIT^{tree}" 2>/dev/null; then
   git -C "$WORK/zenithblue" fetch --no-tags --depth 1 origin "$ZB_COMMIT"
 fi
-git -C "$WORK/zenithblue" checkout --detach -q "$ZB_COMMIT"
+git -C "$WORK/zenithblue" checkout --detach --force -q "$ZB_COMMIT"
+git -C "$WORK/zenithblue" clean -ffdx -q
 if [ ! -d "$WORK/mesa/.git" ]; then
   git init -q "$WORK/mesa"
   git -C "$WORK/mesa" remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
 fi
-git -C "$WORK/mesa" fetch -q --depth 1 origin "$MESA_COMMIT"
-git -C "$WORK/mesa" checkout -q --detach FETCH_HEAD
+if ! git -C "$WORK/mesa" cat-file -e "$MESA_COMMIT^{commit}" 2>/dev/null; then
+  echo "H42: pinned Mesa commit absent from cache, shallow-fetching once"
+  timeout 150s git -C "$WORK/mesa" fetch --no-tags -q --depth 1 origin "$MESA_COMMIT"
+else
+  echo "H42: pinned Mesa already cached; no source download"
+fi
+git -C "$WORK/mesa" checkout -q --force --detach "$MESA_COMMIT"
+git -C "$WORK/mesa" reset --hard -q "$MESA_COMMIT"
+git -C "$WORK/mesa" clean -ffdx -q
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-build}" GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-build@localhost}"
 export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 git -C "$WORK/mesa" apply --index --whitespace=nowarn \
