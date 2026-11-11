@@ -1,7 +1,7 @@
-From 0871a4c5830b101213921d9c7d0b8287cd50f0d9 Mon Sep 17 00:00:00 2001
+From 0c2ec6fcc835c7b7a09b4ca7fb9b4242c74ff3b9 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 4 Nov 2026 00:15:55 +0300
-Subject: [PATCH 59/60] panvk/jm: CPU index range only for buffers the GPU
+Subject: [PATCH 59/69] panvk/jm: CPU index range only for buffers the GPU
  cannot write
 
 The opt-in CPU index range search (PANVK_V7_CPU_INDEX_RANGE=1) read the
@@ -21,7 +21,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  3 files changed, 18 insertions(+)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 563886f..09f5ca0 100644
+index 82450c4df3e..8e0fceb175d 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -4373,6 +4373,11 @@ cpu_index_range_draw(struct panvk_cmd_buffer *cmdbuf, uint32_t indexCount,
@@ -37,10 +37,10 @@ index 563886f..09f5ca0 100644
      * by a copy) is read through a mapping of the driver's own. */
     const uint8_t *ib_host = panvk_device_memory_cpu_ptr(mem);
 diff --git a/src/panfrost/vulkan/panvk_cmd_draw.h b/src/panfrost/vulkan/panvk_cmd_draw.h
-index dd2b6f6..4bedba0 100644
+index 12abd1eaffa..2db4158d8c9 100644
 --- a/src/panfrost/vulkan/panvk_cmd_draw.h
 +++ b/src/panfrost/vulkan/panvk_cmd_draw.h
-@@ -373,6 +373,9 @@ struct panvk_cmd_graphics_state {
+@@ -374,6 +374,9 @@ struct panvk_cmd_graphics_state {
        /* The bound buffer's memory and offset in it (jm-v7 104). */
        struct panvk_device_memory *mem;
        uint64_t mem_offset;
@@ -51,10 +51,10 @@ index dd2b6f6..4bedba0 100644
     } ib;
  
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-index 93a5e43..ec443ae 100644
+index 2fe004528c6..4d4e86a3df6 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-@@ -1196,6 +1196,16 @@ panvk_per_arch(CmdBindIndexBuffer2)(VkCommandBuffer commandBuffer,
+@@ -1219,6 +1219,16 @@ panvk_per_arch(CmdBindIndexBuffer2)(VkCommandBuffer commandBuffer,
  #if PAN_ARCH < 9
        cmdbuf->state.gfx.ib.mem = buf->mem;
        cmdbuf->state.gfx.ib.mem_offset = buf->mem_offset + offset;

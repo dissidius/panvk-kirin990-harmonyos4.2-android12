@@ -1,0 +1,182 @@
+From 9752fd5f66775037fce32b9a2e3448b644797bcc Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Tue, 10 Nov 2026 22:41:33 +0300
+Subject: [PATCH 67/69] panvk: say why a memory map failed in panvk_errors.txt
+
+32-bit Windows games under Wine need placed maps below 4 GiB, which
+kbase can only do for dma-buf backed memory. When a map fails, write the
+map kind, size, address, errno and how the kbase backend allocates
+dma-buf memory (dma-heap, ION new/legacy ABI, or why there is none) to
+panvk_errors.txt (at most 8 lines per process), so a bug report shows
+the cause directly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/lib/kmod/kbase_kmod.c        | 30 +++++++++++++++++++
+ src/panfrost/lib/kmod/kbase_kmod.h        |  2 ++
+ src/panfrost/vulkan/panvk_device_memory.c | 35 ++++++++++++++++++++++-
+ 3 files changed, 66 insertions(+), 1 deletion(-)
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 010b62a2487..2eb791e8d51 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -231,6 +231,9 @@ struct kbase_kmod_dev {
+    bool heap_is_ion;
+    /* /dev/ion speaks the legacy (handle) ABI. */
+    bool ion_legacy;
++   /* How shareable (dma-buf) BOs are allocated, or why they can't be: for
++    * error reports (kbase_kmod_dmabuf_status()). */
++   char dmabuf_status[128];
+    uint32_t ion_heap_mask;
+ 
+    /* Set when the CSF notification stream reports a queue-group error.
+@@ -334,6 +337,15 @@ struct kbase_kmod_bo {
+    struct list_head nc_link;
+ };
+ 
++const char *
++kbase_kmod_dmabuf_status(const struct pan_kmod_dev *dev)
++{
++   const struct kbase_kmod_dev *kbase_dev =
++      container_of(dev, const struct kbase_kmod_dev, base);
++
++   return kbase_dev->dmabuf_status[0] ? kbase_dev->dmabuf_status : "unknown";
++}
++
+ bool
+ kbase_kmod_supports_dmabuf(const struct pan_kmod_dev *dev)
+ {
+@@ -2115,6 +2127,9 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+    if (kbase_dev->dma_heap_fd < 0)
+       mesa_logd("kbase: dma-heap unavailable at %s: %s", dma_heap,
+                 strerror(errno));
++   else
++      snprintf(kbase_dev->dmabuf_status, sizeof(kbase_dev->dmabuf_status),
++               "dma-heap %s", dma_heap);
+ 
+    /* ION fallback (kernels 4.14-5.4, new or legacy ABI): placed maps need a
+     * dma-buf. */
+@@ -2126,6 +2141,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+             .cnt = ARRAY_SIZE(heaps),
+             .heaps = (uintptr_t)heaps,
+          };
++         int query_errno = 0, legacy_errno = 0;
+          if (!ioctl(ion, KBASE_ION_IOC_HEAP_QUERY, &q)) {
+             for (uint32_t i = 0; i < q.cnt && i < ARRAY_SIZE(heaps); i++) {
+                if (heaps[i].type == 0 /* ION_HEAP_TYPE_SYSTEM */) {
+@@ -2134,9 +2150,11 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+                }
+             }
+          } else {
++            query_errno = errno;
+             /* No HEAP_QUERY: try the legacy ABI with the system heap. */
+             int fd = kbase_ion_legacy_alloc(
+                ion, 4096, KBASE_ION_LEGACY_SYSTEM_HEAP_MASK, 0);
++            legacy_errno = fd < 0 ? errno : 0;
+             if (fd >= 0) {
+                close(fd);
+                kbase_dev->ion_heap_mask = KBASE_ION_LEGACY_SYSTEM_HEAP_MASK;
+@@ -2149,12 +2167,24 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+             mesa_logi("kbase: using ION system heap%s, mask 0x%x",
+                       kbase_dev->ion_legacy ? " (legacy ABI)" : "",
+                       kbase_dev->ion_heap_mask);
++            snprintf(kbase_dev->dmabuf_status,
++                     sizeof(kbase_dev->dmabuf_status),
++                     "ION system heap%s, mask 0x%x",
++                     kbase_dev->ion_legacy ? " (legacy ABI)" : "",
++                     kbase_dev->ion_heap_mask);
+          } else {
+             mesa_logi("kbase: no usable ION system heap");
++            snprintf(kbase_dev->dmabuf_status,
++                     sizeof(kbase_dev->dmabuf_status),
++                     "none: no ION system heap (query: %s, legacy alloc: %s)",
++                     query_errno ? strerror(query_errno) : "no system heap",
++                     legacy_errno ? strerror(legacy_errno) : "not tried");
+             close(ion);
+          }
+       } else {
+          mesa_logi("kbase: /dev/ion unavailable: %s", strerror(errno));
++         snprintf(kbase_dev->dmabuf_status, sizeof(kbase_dev->dmabuf_status),
++                  "none: no dma-heap, /dev/ion: %s", strerror(errno));
+       }
+    }
+ 
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
+index 96acea5c0ed..0d192e71ee1 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.h
++++ b/src/panfrost/lib/kmod/kbase_kmod.h
+@@ -79,6 +79,8 @@ uint32_t kbase_kmod_get_flush_id(const struct pan_kmod_dev *dev);
+ 
+ /* True when this kbase context can allocate dma-bufs for sharing with WSI. */
+ bool kbase_kmod_supports_dmabuf(const struct pan_kmod_dev *dev);
++/* How shareable (dma-buf) BOs are allocated, or why they cannot be. */
++const char *kbase_kmod_dmabuf_status(const struct pan_kmod_dev *dev);
+ 
+ /* CSF queue group / queue / tiler heap primitives (CSF only).
+  *
+diff --git a/src/panfrost/vulkan/panvk_device_memory.c b/src/panfrost/vulkan/panvk_device_memory.c
+index 58c4ea0c987..33d9624c2a8 100644
+--- a/src/panfrost/vulkan/panvk_device_memory.c
++++ b/src/panfrost/vulkan/panvk_device_memory.c
+@@ -14,6 +14,9 @@
+ #include "panvk_entrypoints.h"
+ 
+ #include "pan_props.h"
++#ifdef HAVE_PAN_KMOD_KBASE
++#include "kmod/kbase_kmod.h"
++#endif
+ 
+ #include "util/u_atomic.h"
+ #include "vk_debug_utils.h"
+@@ -335,6 +338,34 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
+    vk_device_memory_destroy(&device->vk, pAllocator, &mem->vk);
+ }
+ 
++extern void panvk_errlog(const char *fmt, ...) PRINTFLIKE(1, 2);
++
++/* A failed map goes to panvk_errors.txt with the reason: 32-bit Windows
++ * games (Wine) need placed maps below 4 GiB, which kbase can only do for
++ * dma-buf backed memory, so name how that memory is allocated. */
++static void
++panvk_log_map_failure(struct panvk_device *device,
++                      const struct panvk_device_memory *mem, void *placed,
++                      int err)
++{
++   static unsigned logged;
++   if (p_atomic_inc_return(&logged) > 8)
++      return;
++
++   const char *dmabuf = "n/a";
++#ifdef HAVE_PAN_KMOD_KBASE
++   const struct panvk_physical_device *phys_dev =
++      to_panvk_physical_device(device->vk.physical);
++   if (phys_dev->kbase_node_path[0])
++      dmabuf = kbase_kmod_dmabuf_status(device->kmod.dev);
++#endif
++
++   panvk_errlog("vkMapMemory failed: %s map of %" PRIu64 " bytes%s%p: %s; "
++                "dma-buf memory: %s",
++                placed ? "placed" : "plain", pan_kmod_bo_size(mem->bo),
++                placed ? " at " : "", placed, strerror(err), dmabuf);
++}
++
+ VKAPI_ATTR VkResult VKAPI_CALL
+ panvk_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo,
+                     void **ppData)
+@@ -390,9 +421,11 @@ panvk_MapMemory2KHR(VkDevice _device, const VkMemoryMapInfoKHR *pMemoryMapInfo,
+ 
+    void *addr =
+       pan_kmod_bo_mmap(mem->bo, PROT_READ | PROT_WRITE, map_flags, host_addr);
+-   if (addr == MAP_FAILED)
++   if (addr == MAP_FAILED) {
++      panvk_log_map_failure(device, mem, host_addr, errno);
+       return panvk_errorf(device, VK_ERROR_MEMORY_MAP_FAILED,
+                           "Memory object couldn't be mapped.");
++   }
+ 
+    assert(!host_addr || addr == host_addr);
+    mem->addr.host = addr;
+-- 
+2.43.0
+

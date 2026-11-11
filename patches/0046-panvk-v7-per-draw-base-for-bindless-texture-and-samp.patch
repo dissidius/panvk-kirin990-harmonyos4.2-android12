@@ -1,7 +1,7 @@
-From ea0ecf2d8280749b50ff35d5be95daa3f8a45743 Mon Sep 17 00:00:00 2001
+From 9eb9067517305975d0a9c1e44aed7ea27c05ed55 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 28 Oct 2026 23:49:27 +0300
-Subject: [PATCH 46/54] panvk/v7: per-draw base for bindless texture and
+Subject: [PATCH 46/69] panvk/v7: per-draw base for bindless texture and
  sampler tables
 
 The direct (bindless) tables pointed at a device-constant base 64 GiB
@@ -32,7 +32,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  9 files changed, 84 insertions(+), 27 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
-index dd5dd87..3f19707 100644
+index dd5dd876394..3f19707d0d8 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
 @@ -227,6 +227,10 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
@@ -47,7 +47,7 @@ index dd5dd87..3f19707 100644
           cmdbuf, desc_state, cs_desc_info, true, cs_desc_state);
        if (result != VK_SUCCESS)
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 2d2cdb4..d9f3a0e 100644
+index c775d4b91d9..fed18fa7062 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -2169,11 +2169,23 @@ prepare_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_data *draw)
@@ -99,7 +99,7 @@ index 2d2cdb4..d9f3a0e 100644
        u_foreach_bit(i, info->used_set_mask & BITFIELD_MASK(MAX_SETS)) {
           const struct panvk_descriptor_set *set = desc_state->sets[i];
 diff --git a/src/panfrost/vulkan/panvk_cmd_desc_state.h b/src/panfrost/vulkan/panvk_cmd_desc_state.h
-index 7e87343..f88ad3a 100644
+index 7e8734381d1..f88ad3a97cf 100644
 --- a/src/panfrost/vulkan/panvk_cmd_desc_state.h
 +++ b/src/panfrost/vulkan/panvk_cmd_desc_state.h
 @@ -32,6 +32,8 @@ struct panvk_shader_desc_state {
@@ -167,10 +167,10 @@ index 7e87343..f88ad3a 100644
  static inline uint32_t
  panvk_desc_direct_idx(uint64_t base, uint64_t addr)
 diff --git a/src/panfrost/vulkan/panvk_device.h b/src/panfrost/vulkan/panvk_device.h
-index 2178c67..9e23c87 100644
+index 04e951d8cc9..bf2a2492781 100644
 --- a/src/panfrost/vulkan/panvk_device.h
 +++ b/src/panfrost/vulkan/panvk_device.h
-@@ -248,18 +248,6 @@ to_panvk_device(struct vk_device *dev)
+@@ -277,18 +277,6 @@ to_panvk_device(struct vk_device *dev)
     return container_of(dev, struct panvk_device, vk);
  }
  
@@ -190,10 +190,10 @@ index 2178c67..9e23c87 100644
  /* CSF interface information, sourced from the panthor uAPI or from the
   * kbase GLB interface depending on which backend the device came from.
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index 4da6ca9..85c1df3 100644
+index 5a69dbd914c..7c13287b23f 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
-@@ -333,6 +333,7 @@ panvk_load_env_file(void)
+@@ -329,6 +329,7 @@ panvk_load_env_file(void)
         * size (256 MiB chunks above ~3.8 GiB of heap). */
        if (strncmp(key, "PANVK_", 6) && strncmp(key, "PAN_", 4) &&
            strncmp(key, "MESA_", 5) && strncmp(key, "BIFROST_", 8) &&
@@ -202,7 +202,7 @@ index 4da6ca9..85c1df3 100644
           continue;
        setenv(key, eq + 1, force);
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c b/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c
-index d371343..0b1e81c 100644
+index d3713432a39..0b1e81cca96 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_desc_state.c
 @@ -252,8 +252,7 @@ panvk_per_arch(cmd_prepare_shader_desc_tables)(
@@ -216,7 +216,7 @@ index d371343..0b1e81c 100644
        if (desc_info->direct_mask & PANVK_DIRECT_TEX) {
           shader_desc_state->tables[PANVK_BIFROST_DESC_TABLE_TEXTURE] = base;
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_dispatch.c b/src/panfrost/vulkan/panvk_vX_cmd_dispatch.c
-index 59b34d0..30b97ca 100644
+index 59b34d09f01..30b97cae1c5 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_dispatch.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_dispatch.c
 @@ -68,7 +68,8 @@ panvk_per_arch(cmd_prepare_dispatch_sysvals)(
@@ -230,10 +230,10 @@ index 59b34d0..30b97ca 100644
        u_foreach_bit(i, cs_desc_info->used_set_mask) {
           const struct panvk_descriptor_set *set = desc_state->sets[i];
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-index 28e3d17..0131ade 100644
+index 9fed8c784fa..3ede59e0831 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-@@ -1077,7 +1077,8 @@ panvk_per_arch(cmd_prepare_draw_sysvals)(struct panvk_cmd_buffer *cmdbuf,
+@@ -1100,7 +1100,8 @@ panvk_per_arch(cmd_prepare_draw_sysvals)(struct panvk_cmd_buffer *cmdbuf,
     /* Bindless textures/samplers (jm-v7 050). */
     {
        const struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
@@ -244,7 +244,7 @@ index 28e3d17..0131ade 100644
        u_foreach_bit(i, used_set_mask) {
           const struct panvk_descriptor_set *set = desc_state->sets[i];
 diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
-index acd32a7..5b4e050 100644
+index 05155d46d7b..81a62d2e443 100644
 --- a/src/panfrost/vulkan/panvk_vX_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_device.c
 @@ -10,6 +10,7 @@
@@ -255,7 +255,7 @@ index acd32a7..5b4e050 100644
  #include "drm-uapi/panthor_drm.h"
  
  #include "vk_cmd_enqueue_entrypoints.h"
-@@ -556,6 +557,17 @@ panvk_init_null_descs(struct panvk_device *dev)
+@@ -636,6 +637,17 @@ panvk_init_null_descs(struct panvk_device *dev)
     dev->null_descs.dummy_sampler_addr =
        dev->null_descs.zero_addr + PANVK_NULL_SAMPLER_OFFSET;
  

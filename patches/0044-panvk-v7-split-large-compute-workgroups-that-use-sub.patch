@@ -1,7 +1,7 @@
-From 38a63ba8b2ad20b205e28d9721555f84dade78f7 Mon Sep 17 00:00:00 2001
+From e8398a9f9086fcc03f99261f7e5069e21fa2344d Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 28 Oct 2026 20:36:00 +0300
-Subject: [PATCH 44/45] panvk/v7: split large compute workgroups that use
+Subject: [PATCH 44/69] panvk/v7: split large compute workgroups that use
  subgroup operations
 
 panvk_lower_large_workgroup left shaders with subgroup operations at
@@ -23,10 +23,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 21 insertions(+), 24 deletions(-)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index 9cd7bee..042da8c 100644
+index 154b56d3f43..25d08b58414 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -1089,31 +1089,16 @@ lwg_instr_blocks(nir_instr *instr)
+@@ -1061,31 +1061,16 @@ lwg_instr_blocks(nir_instr *instr)
     if (instr->type != nir_instr_type_intrinsic)
        return false;
     switch (nir_instr_as_intrinsic(instr)->intrinsic) {
@@ -65,7 +65,7 @@ index 9cd7bee..042da8c 100644
        return false;
     }
  }
-@@ -1145,7 +1130,9 @@ lwg_rewrite_ids(nir_builder *b, nir_function_impl *impl, nir_def *lin,
+@@ -1117,7 +1102,9 @@ lwg_rewrite_ids(nir_builder *b, nir_function_impl *impl, nir_def *lin,
           if (intr->intrinsic != nir_intrinsic_load_local_invocation_index &&
               intr->intrinsic != nir_intrinsic_load_local_invocation_id &&
               intr->intrinsic != nir_intrinsic_load_global_invocation_id &&
@@ -76,7 +76,7 @@ index 9cd7bee..042da8c 100644
              continue;
  
           b->cursor = nir_before_instr(instr);
-@@ -1165,6 +1152,16 @@ lwg_rewrite_ids(nir_builder *b, nir_function_impl *impl, nir_def *lin,
+@@ -1137,6 +1124,16 @@ lwg_rewrite_ids(nir_builder *b, nir_function_impl *impl, nir_def *lin,
           case nir_intrinsic_load_global_invocation_id:
              repl = nir_iadd(b, nir_imul(b, nir_load_workgroup_id(b), size), lid);
              break;
@@ -93,7 +93,7 @@ index 9cd7bee..042da8c 100644
           default:
              repl = size;
              break;
-@@ -1226,7 +1223,7 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
+@@ -1198,7 +1195,7 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
     if (!ok) {
        util_dynarray_fini(&barriers);
        mesa_logw("panvk: %u-invocation workgroup: barrier in control flow or "

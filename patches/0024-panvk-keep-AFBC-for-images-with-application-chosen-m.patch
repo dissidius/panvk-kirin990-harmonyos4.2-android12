@@ -1,7 +1,7 @@
-From a0fa29e28a79a9b07f787a2ec819905b436838d2 Mon Sep 17 00:00:00 2001
+From 0df76154f84e6bf9960540a533ea79d2a3512202 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:19 +0300
-Subject: [PATCH 24/27] panvk: keep AFBC for images with application-chosen
+Subject: [PATCH 24/69] panvk: keep AFBC for images with application-chosen
  modifiers
 
 The v7 customBorderColorWithoutFormat rule dropped AFBC for R/B-swapped
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 16 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/vulkan/panvk_image.c b/src/panfrost/vulkan/panvk_image.c
-index d6b4fcf..152d02b 100644
+index 57d02d79235..94239eee404 100644
 --- a/src/panfrost/vulkan/panvk_image.c
 +++ b/src/panfrost/vulkan/panvk_image.c
 @@ -218,7 +218,9 @@ panvk_image_can_use_mod(struct panvk_image *image,

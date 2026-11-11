@@ -1,7 +1,7 @@
-From 73b305c11418cb35251d3f4e52882e2d7d916b68 Mon Sep 17 00:00:00 2001
+From 5bb92f930315a8a6f52b16bb16f4e4cdff55f801 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 28 Oct 2026 18:19:27 +0300
-Subject: [PATCH 42/45] panvk: size push descriptor storage in hardware
+Subject: [PATCH 42/69] panvk: size push descriptor storage in hardware
  descriptors
 
 maxPushDescriptors (MAX_PUSH_DESCS = 32) counts API descriptors, but a
@@ -24,7 +24,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  4 files changed, 13 insertions(+), 3 deletions(-)
 
 diff --git a/src/panfrost/vulkan/panvk_cmd_desc_state.h b/src/panfrost/vulkan/panvk_cmd_desc_state.h
-index 1532f3a..7e87343 100644
+index 1532f3abec0..7e8734381d1 100644
 --- a/src/panfrost/vulkan/panvk_cmd_desc_state.h
 +++ b/src/panfrost/vulkan/panvk_cmd_desc_state.h
 @@ -54,7 +54,7 @@ panvk_shader_res_table_count(struct panvk_shader_desc_state *shader_desc_state)
@@ -37,7 +37,7 @@ index 1532f3a..7e87343 100644
  
  struct panvk_descriptor_state {
 diff --git a/src/panfrost/vulkan/panvk_cmd_meta.h b/src/panfrost/vulkan/panvk_cmd_meta.h
-index e468a38..fed913b 100644
+index e468a38e342..fed913b2f28 100644
 --- a/src/panfrost/vulkan/panvk_cmd_meta.h
 +++ b/src/panfrost/vulkan/panvk_cmd_meta.h
 @@ -24,7 +24,7 @@ struct panvk_cmd_meta_compute_save_ctx {
@@ -59,7 +59,7 @@ index e468a38..fed913b 100644
        uint32_t desc_count;
        bool dirty;
 diff --git a/src/panfrost/vulkan/panvk_descriptor_set_layout.h b/src/panfrost/vulkan/panvk_descriptor_set_layout.h
-index 35b796f..7c867b4 100644
+index 35b796f2d8a..7c867b49e62 100644
 --- a/src/panfrost/vulkan/panvk_descriptor_set_layout.h
 +++ b/src/panfrost/vulkan/panvk_descriptor_set_layout.h
 @@ -23,6 +23,13 @@
@@ -77,10 +77,10 @@ index 35b796f..7c867b4 100644
  #define MAX_DYNAMIC_BUFFERS                                                    \
     (MAX_DYNAMIC_UNIFORM_BUFFERS + MAX_DYNAMIC_STORAGE_BUFFERS)
 diff --git a/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c b/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c
-index ad0c44d..236818a 100644
+index e4a96e4b86c..f6ebad67286 100644
 --- a/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c
 +++ b/src/panfrost/vulkan/panvk_vX_descriptor_set_layout.c
-@@ -201,6 +201,9 @@ panvk_per_arch(CreateDescriptorSetLayout)(
+@@ -191,6 +191,9 @@ panvk_per_arch(CreateDescriptorSetLayout)(
     }
  
     layout->desc_count = desc_idx;

@@ -1,7 +1,7 @@
-From 40d8c0c9d855500c6d8373f956ba6f32e80cec7b Mon Sep 17 00:00:00 2001
+From 5b70beaabf742f4cd2d597bc728e1fca5f5bf8cd Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 19:21:45 +0300
-Subject: [PATCH 41/41] pan/bi: issue vertex shader storage loads earlier
+Subject: [PATCH 41/69] pan/bi: issue vertex shader storage loads earlier
 
 nir_opt_move places every load right before its first use, so a
 skinning vertex shader alternates loading a bone matrix row, waiting for
@@ -26,10 +26,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 155 insertions(+)
 
 diff --git a/src/panfrost/compiler/bifrost/bifrost_compile.c b/src/panfrost/compiler/bifrost/bifrost_compile.c
-index a24f7d4..391806e 100644
+index 0be1b3a4991..971744df38a 100644
 --- a/src/panfrost/compiler/bifrost/bifrost_compile.c
 +++ b/src/panfrost/compiler/bifrost/bifrost_compile.c
-@@ -4301,6 +4301,158 @@ compare_u32(const void* a, const void* b, void* _)
+@@ -4305,6 +4305,158 @@ compare_u32(const void* a, const void* b, void* _)
     return va - vb;
  }
  
@@ -188,7 +188,7 @@ index a24f7d4..391806e 100644
  static bi_context *
  bi_compile_variant_nir(nir_shader *nir,
                         const struct pan_compile_inputs *inputs,
-@@ -4358,6 +4510,9 @@ bi_compile_variant_nir(nir_shader *nir,
+@@ -4362,6 +4514,9 @@ bi_compile_variant_nir(nir_shader *nir,
        }
     }
  

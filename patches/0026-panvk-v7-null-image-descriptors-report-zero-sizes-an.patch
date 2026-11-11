@@ -1,7 +1,7 @@
-From b0b66a84d5fcfb2d18b51c5c45e67c6011c51680 Mon Sep 17 00:00:00 2001
+From b4a25634a1b1643df66f178522d6cbfdfc26d8c5 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:28 +0300
-Subject: [PATCH 26/27] panvk/v7: null image descriptors report zero sizes and
+Subject: [PATCH 26/69] panvk/v7: null image descriptors report zero sizes and
  read zero
 
 Bifrost null descriptors are a 1x1 image made to read zero (texture:
@@ -19,7 +19,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  2 files changed, 75 insertions(+), 15 deletions(-)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c b/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
-index 64b7169..635b415 100644
+index 8c07e1b7898..6a1761942a9 100644
 --- a/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
 +++ b/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
 @@ -611,6 +611,56 @@ load_resource_deref_desc(nir_builder *b, nir_deref_instr *deref,
@@ -137,10 +137,10 @@ index 64b7169..635b415 100644
  
  /* Bindless descriptors on v6/v7 (jm-v7 050), see panvk_binding_is_bindless().
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index b46e159..b12c32c 100644
+index c9647374637..9c6f645f684 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -3275,6 +3275,24 @@ panvk_v7_lower_robust_image2_intr(nir_builder *b, nir_intrinsic_instr *intr,
+@@ -3258,6 +3258,24 @@ panvk_v7_lower_robust_image2_intr(nir_builder *b, nir_intrinsic_instr *intr,
        }
        nir_def *res = nir_vector_insert_imm(
           b, &intr->def, nir_bcsel(b, in_bounds, hw_a, oob_a), 3);

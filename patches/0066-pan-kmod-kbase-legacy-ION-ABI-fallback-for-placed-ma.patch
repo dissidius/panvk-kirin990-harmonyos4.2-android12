@@ -1,0 +1,149 @@
+From 89a8fd4f01533174e2cd352a63298e54aa80ce50 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Tue, 10 Nov 2026 22:14:15 +0300
+Subject: [PATCH 66/69] pan/kmod/kbase: legacy ION ABI fallback for placed maps
+
+Placed CPU maps (VK_EXT_map_memory_placed, which Wine uses below 4 GiB for
+32-bit games) need dma-buf backed BOs. Kernels without dma-heap use ION,
+but some vendor 4.14 kernels (MediaTek MT6768, Helio G80) kept the legacy
+ION uapi: no HEAP_QUERY, ALLOC returns a handle that SHARE turns into a
+dma-buf. There every placed map failed with VK_ERROR_MEMORY_MAP_FAILED
+and 32-bit games crashed (NFS Most Wanted on a Vivo V21s).
+
+When HEAP_QUERY fails, try a legacy allocation from the system heap
+(id 0) and use the legacy ABI for dma-buf BOs if it works.
+
+Tested: tests/placed (64 MiB placed map below 4 GiB, GPU fill, CPU check)
+fails before and passes after on the Vivo (Mali-G52 MC2, legacy ION);
+passes on the Samsung A51 and Huawei P40 (new ION ABI) with and without
+the change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/lib/kmod/kbase_kmod.c | 78 ++++++++++++++++++++++++++++--
+ 1 file changed, 75 insertions(+), 3 deletions(-)
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index b031a2871aa..010b62a2487 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -89,6 +89,56 @@ struct kbase_ion_heap_query {
+ #define KBASE_ION_IOC_ALLOC      _IOWR('I', 0, struct kbase_ion_alloc)
+ #define KBASE_ION_IOC_HEAP_QUERY _IOWR('I', 8, struct kbase_ion_heap_query)
+ 
++/* Legacy ION uapi (kernels before 4.12, and vendor 4.14 kernels that kept
++ * it, e.g. MediaTek MT6768): ALLOC returns a handle that SHARE turns into a
++ * dma-buf fd; there is no HEAP_QUERY. The ioctl numbers encode the struct
++ * size, so ALLOC differs from the new ABI's. */
++struct kbase_ion_legacy_alloc {
++   size_t len;
++   size_t align;
++   uint32_t heap_id_mask;
++   uint32_t flags;
++   int32_t handle;
++};
++struct kbase_ion_legacy_fd {
++   int32_t handle;
++   int32_t fd;
++};
++struct kbase_ion_legacy_handle {
++   int32_t handle;
++};
++#define KBASE_ION_LEGACY_IOC_ALLOC _IOWR('I', 0, struct kbase_ion_legacy_alloc)
++#define KBASE_ION_LEGACY_IOC_FREE  _IOWR('I', 1, struct kbase_ion_legacy_handle)
++#define KBASE_ION_LEGACY_IOC_SHARE _IOWR('I', 4, struct kbase_ion_legacy_fd)
++
++/* The system heap of the legacy ABI: id 0 (ION_HEAP_TYPE_SYSTEM) by
++ * convention, as there is no query. */
++#define KBASE_ION_LEGACY_SYSTEM_HEAP_MASK (1u << 0)
++
++/* Allocates a dma-buf from a legacy ION device. Returns the fd, or -1. */
++static int
++kbase_ion_legacy_alloc(int ion, uint64_t len, uint32_t heap_mask,
++                       uint32_t flags)
++{
++   struct kbase_ion_legacy_alloc a = {
++      .len = len,
++      .align = 4096,
++      .heap_id_mask = heap_mask,
++      .flags = flags,
++   };
++   if (ioctl(ion, KBASE_ION_LEGACY_IOC_ALLOC, &a))
++      return -1;
++
++   struct kbase_ion_legacy_fd share = { .handle = a.handle, .fd = -1 };
++   int ret = ioctl(ion, KBASE_ION_LEGACY_IOC_SHARE, &share);
++
++   /* The dma-buf keeps the buffer alive; the handle is not needed. */
++   struct kbase_ion_legacy_handle h = { .handle = a.handle };
++   ioctl(ion, KBASE_ION_LEGACY_IOC_FREE, &h);
++
++   return ret ? -1 : share.fd;
++}
++
+ #include "pan_kmod_backend.h"
+ #include "pan_props.h"
+ #include "pan_trace.h"
+@@ -179,6 +229,8 @@ struct kbase_kmod_dev {
+    /* Kernels without dma-heap (4.14/5.4 ION) use /dev/ion through the same
+     * fd field; ion_heap_mask is the system heap id mask. */
+    bool heap_is_ion;
++   /* /dev/ion speaks the legacy (handle) ABI. */
++   bool ion_legacy;
+    uint32_t ion_heap_mask;
+ 
+    /* Set when the CSF notification stream reports a queue-group error.
+@@ -2064,7 +2116,8 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+       mesa_logd("kbase: dma-heap unavailable at %s: %s", dma_heap,
+                 strerror(errno));
+ 
+-   /* ION fallback (new ABI, kernels 4.14-5.4): placed maps need a dma-buf. */
++   /* ION fallback (kernels 4.14-5.4, new or legacy ABI): placed maps need a
++    * dma-buf. */
+    if (kbase_dev->dma_heap_fd < 0) {
+       int ion = open("/dev/ion", O_RDONLY | O_CLOEXEC);
+       if (ion >= 0) {
+@@ -2080,11 +2133,21 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+                   break;
+                }
+             }
++         } else {
++            /* No HEAP_QUERY: try the legacy ABI with the system heap. */
++            int fd = kbase_ion_legacy_alloc(
++               ion, 4096, KBASE_ION_LEGACY_SYSTEM_HEAP_MASK, 0);
++            if (fd >= 0) {
++               close(fd);
++               kbase_dev->ion_heap_mask = KBASE_ION_LEGACY_SYSTEM_HEAP_MASK;
++               kbase_dev->ion_legacy = true;
++            }
+          }
+          if (kbase_dev->ion_heap_mask) {
+             kbase_dev->dma_heap_fd = ion;
+             kbase_dev->heap_is_ion = true;
+-            mesa_logi("kbase: using ION system heap, mask 0x%x",
++            mesa_logi("kbase: using ION system heap%s, mask 0x%x",
++                      kbase_dev->ion_legacy ? " (legacy ABI)" : "",
+                       kbase_dev->ion_heap_mask);
+          } else {
+             mesa_logi("kbase: no usable ION system heap");
+@@ -2691,7 +2754,16 @@ kbase_kmod_bo_alloc_dmabuf(struct pan_kmod_dev *dev, uint64_t size,
+           * the CPU caches (Kirin 990: placed maps read stale lines). */
+          .flags = (kmod_flags & PAN_KMOD_BO_FLAG_WB_MMAP) ? 1 : 0,
+       };
+-      if (ioctl(kbase_dev->dma_heap_fd, KBASE_ION_IOC_ALLOC, &ia)) {
++      if (kbase_dev->ion_legacy) {
++         int fd = kbase_ion_legacy_alloc(kbase_dev->dma_heap_fd, ia.len,
++                                         ia.heap_id_mask, ia.flags);
++         if (fd < 0) {
++            mesa_loge("kbase: legacy ION_IOC_ALLOC failed: %s",
++                      strerror(errno));
++            return NULL;
++         }
++         ia.fd = fd;
++      } else if (ioctl(kbase_dev->dma_heap_fd, KBASE_ION_IOC_ALLOC, &ia)) {
+          mesa_loge("kbase: ION_IOC_ALLOC failed: %s", strerror(errno));
+          return NULL;
+       }
+-- 
+2.43.0
+

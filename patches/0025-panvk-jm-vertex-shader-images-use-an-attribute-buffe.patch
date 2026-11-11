@@ -1,7 +1,7 @@
-From 9671ee1557ad1b2a475cbc66258324ab9430fb48 Mon Sep 17 00:00:00 2001
+From 245f934094f247b6be969983f3cff9b2eaf33d94 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:19 +0300
-Subject: [PATCH 25/27] panvk/jm: vertex shader images use an attribute buffer
+Subject: [PATCH 25/69] panvk/jm: vertex shader images use an attribute buffer
  index offset
 
 The descriptor copy job adds attrib_buf_idx_offset to the image's
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 3e7a914..910462f 100644
+index 677223d304f..fb28df9bd4e 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -1903,9 +1903,13 @@ panvk_draw_prepare_vs_copy_desc_job(struct panvk_cmd_buffer *cmdbuf,

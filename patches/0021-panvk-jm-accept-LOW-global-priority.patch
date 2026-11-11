@@ -1,7 +1,7 @@
-From c0fa73434d21513600f77246ad296ff055397578 Mon Sep 17 00:00:00 2001
+From 51420f3b4ea120e750d07f2c23d2364d0cbc080a Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:07 +0300
-Subject: [PATCH 21/27] panvk/jm: accept LOW global priority
+Subject: [PATCH 21/69] panvk/jm: accept LOW global priority
 
 LOW only ever needs to be a hint: report and accept it (it runs as
 MEDIUM). Refusing it failed dEQP-VK.api.device_init.create_device_global_priority*.
@@ -13,10 +13,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  2 files changed, 7 insertions(+), 5 deletions(-)
 
 diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
-index e589b21..52d2744 100644
+index e85919bbd36..9d2a6cbeae3 100644
 --- a/src/panfrost/vulkan/panvk_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_physical_device.c
-@@ -1620,11 +1620,12 @@ panvk_fill_global_priority(const struct panvk_physical_device *physical_device,
+@@ -1672,11 +1672,12 @@ panvk_fill_global_priority(const struct panvk_physical_device *physical_device,
           physical_device->kmod.dev->props.allowed_group_priorities_mask;
  
        /* Non-medium priority context is not hooked-up in the JM backend, even
@@ -33,10 +33,10 @@ index e589b21..52d2744 100644
        if (prio_mask & PAN_KMOD_GROUP_ALLOW_PRIORITY_LOW)
           prio->priorities[prio_idx++] = VK_QUEUE_GLOBAL_PRIORITY_LOW_KHR;
 diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
-index 8f67ec8..4c15eff 100644
+index 4b07bc65d6a..87c13bee676 100644
 --- a/src/panfrost/vulkan/panvk_vX_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_device.c
-@@ -342,10 +342,11 @@ check_global_priority(const struct panvk_physical_device *phys_dev,
+@@ -422,10 +422,11 @@ check_global_priority(const struct panvk_physical_device *phys_dev,
  
        /* Non-medium priority context is not hooked-up in the JM backend, even
         * though the panfrost kmod advertize it. Manually filter non-medium

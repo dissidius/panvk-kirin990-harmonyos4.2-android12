@@ -1,7 +1,7 @@
-From f0c626c15e24c9429798d1e54d85b601f9bcfba7 Mon Sep 17 00:00:00 2001
+From 8cec94da55607d92cfb6e8852d7969f77bd6d667 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 03:53:34 +0300
-Subject: [PATCH 34/36] panvk/v7: robust SSBO loads without branches, merged
+Subject: [PATCH 34/69] panvk/v7: robust SSBO loads without branches, merged
  into 16-byte loads
 
 With robustBufferAccess2 (DXVK), every storage buffer load on v6/v7 was
@@ -33,7 +33,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 355 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index 4935eb5..d430afa 100644
+index e12738cb469..5e1d49b39bb 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
 @@ -20,6 +20,7 @@
@@ -52,7 +52,7 @@ index 4935eb5..d430afa 100644
  #include "nir_builtin_builder.h"
  #include "nir_conversion_builder.h"
  #include "nir_deref.h"
-@@ -446,11 +448,359 @@ panvk_buffer_ssbo_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
+@@ -418,11 +420,359 @@ panvk_buffer_ssbo_addr_format(VkPipelineRobustnessBufferBehaviorEXT robustness)
     }
  }
  
@@ -412,7 +412,7 @@ index 4935eb5..d430afa 100644
     return pan_get_nir_shader_compiler_options(PAN_ARCH, stage, false);
  }
  
-@@ -3617,6 +3967,11 @@ panvk_lower_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -3600,6 +3950,11 @@ panvk_lower_nir(struct panvk_device *dev, nir_shader *nir,
              panvk_buffer_ubo_addr_format(rs->uniform_buffers));
     NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ssbo,
              panvk_buffer_ssbo_addr_format(panvk_ssbo_robustness(rs)));

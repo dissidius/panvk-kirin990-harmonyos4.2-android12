@@ -14,8 +14,9 @@ These are the settings all results below were measured with (Winlator cmod 4.1).
 
 | Setting | Value | Why |
 |---|---|---|
-| **Graphics Driver** | `PanVK-G76-Kirin990-1.2.6` (1.2.5 and older: `PanVK G76 Kirin 990 <version>`) | the game renders with PanVK |
-| **Renderer Driver** | **System** or `PanVK-G76-Kirin990-1.2.6` | Winlator's screen compositor. Up to 1.2.0 PanVK gave a black screen here (fixed in 1.2.1, patch 0039); System still works and keeps the compositor off PanVK. |
+| **Graphics Driver** | `PanVK-G76-Kirin990-1.3.0` (1.2.5 and older: `PanVK G76 Kirin 990 <version>`) | the game renders with PanVK |
+| **Renderer Driver** | **System** or `PanVK-G76-Kirin990-1.3.0` | Winlator's screen compositor. PanVK works here on the P40 since 1.2.1 and on Samsung (Android 16) and MediaTek phones since 1.3.0; System still works and keeps the compositor off PanVK. |
+| **`WRAPPER_RESOURCE_TYPE=opaque`** (MediaTek phones with kernel 4.14) | environment variable | Winlator's wrapper maps the wrong buffer fd on MediaTek gralloc and its own ION allocation needs the new ION interface, so 32-bit games crash at start (`vkMapMemory2EXT failed: -5`). With this setting it uses PanVK's memory export instead (1.3.0 or newer). |
 | **Box64 preset** (x86_64 containers) | **Performance** | COMPATIBILITY enables `BOX64_DYNAREC_STRONGMEM=1`: every emulated memory access gets a barrier. The AIO D3D9 test spent 99 % of its CPU time in one emulated byte-swizzle loop (profiled with `simpleperf`, PanVK was 0.17 %). Performance: D3D9 12 → 60 FPS (A51), 5.5 → ~74 FPS (P40). Use COMPATIBILITY only for a game that breaks. |
 | **FEXCore preset** (ARM64EC containers) | the fastest one / TSO off | same effect as STRONGMEM above |
 | **DXVK** | DXVK-Sarek 1.11/1.12/1.14, DXVK 1.10.3(-async), DXVK 2.3.1, DXVK 2.7.1 gplasync (1.2.4) tested | DXVK 2.x needs robustness2 / null descriptors — present. DXVK 2.4 and later: 1.2.4 or newer (black window before). Older DXVK is still faster here (see *Results*) |
@@ -39,11 +40,11 @@ From 1.2.6 the zip contains `libGL_memfd.so` ([source](../../tools/winlator-gl/)
 provides `memfd_create()` (the kernel has the system call) and loads Winlator's real
 `libGL.so.1`. To use it, in the container (or shortcut) settings:
 
-1. **Graphics Driver**: `PanVK-G76-Kirin990-1.2.9`, and **Zink** for OpenGL.
+1. **Graphics Driver**: `PanVK-G76-Kirin990-1.3.0`, and **Zink** for OpenGL.
 2. **Environment Variables** → add `BOX64_LIBGL` with the value (one line, no spaces):
 
    ```text
-   /data/data/com.winlator.cmod/files/contents/adrenotools/PanVK-G76-Kirin990-1.2.9/libGL_memfd.so
+   /data/data/com.winlator.cmod/files/contents/adrenotools/PanVK-G76-Kirin990-1.3.0/libGL_memfd.so
    ```
 
    The directory is named after the driver version: after updating the driver, change the

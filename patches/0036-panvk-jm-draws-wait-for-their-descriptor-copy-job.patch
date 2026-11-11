@@ -1,7 +1,7 @@
-From ded07de9036e862aacd8f32844a3376f5ac3f2e1 Mon Sep 17 00:00:00 2001
+From c4e8b908e73eeae3b4947f59fe3cdd028194e241 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 03:53:51 +0300
-Subject: [PATCH 36/36] panvk/jm: draws wait for their descriptor copy job
+Subject: [PATCH 36/69] panvk/jm: draws wait for their descriptor copy job
 
 The vertex/IDVS job of a draw only depended on its index range helper,
 which used to depend on the draw's descriptor copy job. A hoisted or
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 11 insertions(+), 7 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 6d3122c..ee177ee 100644
+index 01a5191d0a8..cd691308e78 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3668,18 +3668,22 @@ panvk_cmd_draw_indirect(struct panvk_cmd_buffer *cmdbuf,

@@ -1,7 +1,7 @@
-From 92e47afea253591ab0f29eac4d4ccbc381eac05f Mon Sep 17 00:00:00 2001
+From ac680e20f7a4ce6f0b7a1cc36a16daa044d5d165 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 13:52:44 +0300
-Subject: [PATCH 32/36] panvk/jm: index range helpers at the head of the batch
+Subject: [PATCH 32/69] panvk/jm: index range helpers at the head of the batch
 
 The index range helpers of indexed draws patch their draw's IDVS, vertex
 and tiler descriptors, so each ran with SUPPRESS_PREFETCH and the job
@@ -27,7 +27,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  4 files changed, 114 insertions(+), 3 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index af2169e..bab88ea 100644
+index d031626465e..e3cc438394d 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -31,6 +31,11 @@
@@ -56,10 +56,10 @@ index af2169e..bab88ea 100644
     struct {
        struct pan_ptr desc;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index a2afb92..d5e4c0f 100644
+index b7371be16d2..9263e4082c4 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-@@ -207,6 +207,69 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
+@@ -208,6 +208,69 @@ panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
     cmd_close_batch_impl(cmdbuf);
  }
  
@@ -129,7 +129,7 @@ index a2afb92..d5e4c0f 100644
  static void
  cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
  {
-@@ -217,6 +280,8 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
+@@ -218,6 +281,8 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
  
     assert(batch);
  
@@ -139,7 +139,7 @@ index a2afb92..d5e4c0f 100644
        if (util_dynarray_num_elements(&batch->event_ops,
                                       struct panvk_cmd_event_op) == 0) {
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 910462f..9d22523 100644
+index fb28df9bd4e..065d2bfd8b4 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3344,7 +3344,24 @@ panvk_cmd_draw_indirect(struct panvk_cmd_buffer *cmdbuf,
@@ -226,7 +226,7 @@ index 910462f..9d22523 100644
           const struct panlib_draw_indirect_helper_args args = {
              .cmd = draw->info.indirect.buffer_dev_addr,
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_precomp.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_precomp.c
-index 0e990d5..2df9446 100644
+index 0e990d56486..2df9446c660 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_precomp.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_precomp.c
 @@ -117,6 +117,12 @@ panvk_per_arch(dispatch_precomp)(struct panvk_precomp_ctx *ctx,

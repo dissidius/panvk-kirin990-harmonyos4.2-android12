@@ -1,7 +1,7 @@
-From 24aa1d2e42196dd48ad52be54823f86caf91f290 Mon Sep 17 00:00:00 2001
+From 6a70ad9ac3b9534018baadc00c861eb7417fb83e Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 03:24:30 +0300
-Subject: [PATCH 2/2] u_gralloc: import linear Huawei gralloc buffers without
+Subject: [PATCH 02/69] u_gralloc: import linear Huawei gralloc buffers without
  mapper4 metadata
 
 ---
@@ -9,7 +9,7 @@ Subject: [PATCH 2/2] u_gralloc: import linear Huawei gralloc buffers without
  1 file changed, 29 insertions(+)
 
 diff --git a/src/util/u_gralloc/u_gralloc_fallback.c b/src/util/u_gralloc/u_gralloc_fallback.c
-index 3630434..9a85d1c 100644
+index 3630434ec97..9a85d1c966d 100644
 --- a/src/util/u_gralloc/u_gralloc_fallback.c
 +++ b/src/util/u_gralloc/u_gralloc_fallback.c
 @@ -655,6 +655,35 @@ fallback_gralloc_get_buffer_info(struct u_gralloc *gralloc,

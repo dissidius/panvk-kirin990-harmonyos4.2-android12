@@ -1,0 +1,451 @@
+From decdc0ceba3e1689019164995b3f5d09d36a4251 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Tue, 10 Nov 2026 21:43:26 +0300
+Subject: [PATCH 64/69] panvk, pan/kmod: build fixes after the Mesa 27 merge
+
+- kbase backend: stub util_sync_provider (kbase uses panvk's CPU sync
+  type), pan_kmod_dev_init() argument order.
+- pan_kmod: keep the panfrost backend entry under its #if.
+- panvk_priv_bo_create() takes a label; set it after
+  panvk_priv_bo_create_kind() and pass NULL from our callers.
+- Restore indirect_info.varying_bufs (JM indirect varying buffer kept).
+- pan_compile_inputs has no gpu_id any more: read it from the physical
+  device for the IDVS product check; drop the unused gpu_id argument of
+  pan_nir_lower_vs_inputs_poly().
+- kbase pan_get_model() call with core count and features; one
+  core_count in the DRM init path; u_cpu_detect.h in u_queue.c;
+  arch instead of gpu_id in pan_nir_lower_tex.c.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/compiler/pan_nir.h               |  2 +-
+ src/panfrost/compiler/pan_nir_lower_tex.c     |  4 +-
+ .../compiler/pan_nir_lower_vs_inputs.c        |  2 +-
+ src/panfrost/lib/kmod/kbase_kmod.c            | 74 ++++++++++++++++++-
+ src/panfrost/lib/kmod/pan_kmod.c              |  1 +
+ src/panfrost/vulkan/csf/panvk_vX_event.c      |  2 +-
+ src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c  |  2 +-
+ src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c  |  2 +-
+ src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c    |  1 +
+ src/panfrost/vulkan/panvk_physical_device.c   |  7 +-
+ src/panfrost/vulkan/panvk_priv_bo.c           | 10 +--
+ src/panfrost/vulkan/panvk_vX_cmd_meta.c       |  2 +-
+ src/panfrost/vulkan/panvk_vX_device.c         | 18 ++---
+ src/panfrost/vulkan/panvk_vX_query_pool.c     |  2 +-
+ src/panfrost/vulkan/panvk_vX_shader.c         |  6 +-
+ src/util/u_queue.c                            |  1 +
+ 16 files changed, 105 insertions(+), 31 deletions(-)
+
+diff --git a/src/panfrost/compiler/pan_nir.h b/src/panfrost/compiler/pan_nir.h
+index 8f1ca332876..36ac7b23bab 100644
+--- a/src/panfrost/compiler/pan_nir.h
++++ b/src/panfrost/compiler/pan_nir.h
+@@ -247,7 +247,7 @@ bool pan_nir_lower_var_special_pan(nir_shader *shader);
+ bool pan_nir_lower_noperspective_vs(nir_shader *shader);
+ 
+ bool pan_nir_lower_vs_inputs(nir_shader *shader);
+-bool pan_nir_lower_vs_inputs_poly(nir_shader *shader, uint64_t gpu_id);
++bool pan_nir_lower_vs_inputs_poly(nir_shader *shader);
+ 
+ bool pan_nir_lower_vs_outputs(nir_shader *shader, unsigned arch,
+                               const struct pan_varying_layout *varying_layout,
+diff --git a/src/panfrost/compiler/pan_nir_lower_tex.c b/src/panfrost/compiler/pan_nir_lower_tex.c
+index b042adcbd2a..ede87b9d81a 100644
+--- a/src/panfrost/compiler/pan_nir_lower_tex.c
++++ b/src/panfrost/compiler/pan_nir_lower_tex.c
+@@ -611,7 +611,7 @@ bi_lower_tex(nir_builder *b, nir_tex_instr *tex, unsigned arch)
+             comps[i] = nir_get_scalar(nir_imm_int(b, 0), 0);
+       }
+ 
+-      if (pan_arch(gpu_id) == 6) {
++      if (arch == 6) {
+          /* jm-v7 102: pack the u8vec4 with 32-bit shifts on v6. The 8-bit
+           * vector pack (MKVEC.v4i8 and friends) of a non-constant offset
+           * faulted with INSTR_INVALID_ENC (event 0x51) on the FTL Galaxy S9
+@@ -743,7 +743,7 @@ va_lower_txf_buf(nir_builder *b, nir_tex_instr *tex, unsigned arch)
+ 
+    nir_def *addr = nir_pack_64_2x32(b,
+       nir_lea_buf_pan(b, srcs.tex_h, srcs.coord));
+-   nir_def *cvt = pan_nir_load_va_buf_cvt(b, srcs.tex_h, pan_arch(gpu_id));
++   nir_def *cvt = pan_nir_load_va_buf_cvt(b, srcs.tex_h, arch);
+    nir_def *val = nir_load_global_cvt_pan(b, tex->def.num_components,
+                                           tex->def.bit_size, addr, cvt,
+                                           tex->dest_type);
+diff --git a/src/panfrost/compiler/pan_nir_lower_vs_inputs.c b/src/panfrost/compiler/pan_nir_lower_vs_inputs.c
+index be53b09e0c5..c258af5cb09 100644
+--- a/src/panfrost/compiler/pan_nir_lower_vs_inputs.c
++++ b/src/panfrost/compiler/pan_nir_lower_vs_inputs.c
+@@ -59,7 +59,7 @@ pan_nir_lower_vs_inputs(nir_shader *shader)
+ }
+ 
+ bool
+-pan_nir_lower_vs_inputs_poly(nir_shader *shader, uint64_t gpu_id)
++pan_nir_lower_vs_inputs_poly(nir_shader *shader)
+ {
+    bool poly = true;
+    return nir_shader_intrinsics_pass(shader, lower_vs_input_intr,
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 3e30fab98ca..b031a2871aa 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -63,6 +63,7 @@
+ #include "drm-uapi/panthor_drm.h"
+ 
+ #include "kbase_kmod.h"
++#include "util/u_sync_provider.h"
+ 
+ /* ION new-ABI uapi (<linux/ion.h> is not in the NDK). */
+ struct kbase_ion_alloc {
+@@ -1788,6 +1789,75 @@ kbase_jm_warmup(void)
+    }
+ }
+ 
++/* kbase has no DRM syncobjs: panvk uses its own CPU sync type on kbase
++ * (get_device_sync_types_kbase()), so every operation of this provider
++ * fails with ENOSYS. pan_kmod_dev_init() requires a provider. */
++static int
++kbase_sync_unsupported(void)
++{
++   errno = ENOSYS;
++   return -1;
++}
++
++#define KBASE_SYNC_STUB(name, ...)                                             \
++   static int kbase_sync_##name(UNUSED struct util_sync_provider *p,          \
++                                __VA_ARGS__)                                   \
++   {                                                                           \
++      return kbase_sync_unsupported();                                        \
++   }
++
++KBASE_SYNC_STUB(create, UNUSED uint32_t flags, UNUSED uint32_t *handle)
++KBASE_SYNC_STUB(destroy, UNUSED uint32_t handle)
++KBASE_SYNC_STUB(handle_to_fd, UNUSED uint32_t handle, UNUSED int *fd)
++KBASE_SYNC_STUB(fd_to_handle, UNUSED int fd, UNUSED uint32_t *handle)
++KBASE_SYNC_STUB(import_sync_file, UNUSED uint32_t handle, UNUSED int fd)
++KBASE_SYNC_STUB(export_sync_file, UNUSED uint32_t handle, UNUSED int *fd)
++KBASE_SYNC_STUB(wait, UNUSED uint32_t *handles, UNUSED unsigned n,
++                UNUSED int64_t timeout, UNUSED unsigned flags,
++                UNUSED uint32_t *first)
++KBASE_SYNC_STUB(reset, UNUSED const uint32_t *handles, UNUSED uint32_t n)
++KBASE_SYNC_STUB(signal, UNUSED const uint32_t *handles, UNUSED uint32_t n)
++KBASE_SYNC_STUB(timeline_signal, UNUSED const uint32_t *handles,
++                UNUSED uint64_t *points, UNUSED uint32_t n)
++KBASE_SYNC_STUB(timeline_wait, UNUSED uint32_t *handles,
++                UNUSED uint64_t *points, UNUSED unsigned n,
++                UNUSED int64_t timeout, UNUSED unsigned flags,
++                UNUSED uint32_t *first)
++KBASE_SYNC_STUB(query, UNUSED uint32_t *handles, UNUSED uint64_t *points,
++                UNUSED uint32_t n, UNUSED uint32_t flags)
++KBASE_SYNC_STUB(transfer, UNUSED uint32_t dst, UNUSED uint64_t dst_point,
++                UNUSED uint32_t src, UNUSED uint64_t src_point,
++                UNUSED uint32_t flags)
++
++static void
++kbase_sync_finalize(UNUSED struct util_sync_provider *p)
++{
++}
++
++static struct util_sync_provider *
++kbase_sync_clone(struct util_sync_provider *p)
++{
++   return p;
++}
++
++static struct util_sync_provider kbase_sync_provider = {
++   .create = kbase_sync_create,
++   .destroy = kbase_sync_destroy,
++   .handle_to_fd = kbase_sync_handle_to_fd,
++   .fd_to_handle = kbase_sync_fd_to_handle,
++   .import_sync_file = kbase_sync_import_sync_file,
++   .export_sync_file = kbase_sync_export_sync_file,
++   .wait = kbase_sync_wait,
++   .reset = kbase_sync_reset,
++   .signal = kbase_sync_signal,
++   .timeline_signal = kbase_sync_timeline_signal,
++   .timeline_wait = kbase_sync_timeline_wait,
++   .query = kbase_sync_query,
++   .transfer = kbase_sync_transfer,
++   .finalize = kbase_sync_finalize,
++   .clone = kbase_sync_clone,
++};
++
+ static struct pan_kmod_dev *
+ kbase_kmod_dev_create(int fd, uint32_t flags,
+                       const struct pan_kmod_allocator *allocator)
+@@ -1937,8 +2007,8 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
+    if (user_cache_sync && !strcmp(user_cache_sync, "0"))
+       flags |= PAN_KMOD_DEV_FLAG_MMAP_SYNC_THROUGH_KERNEL;
+ 
+-   pan_kmod_dev_init(&kbase_dev->base, fd, flags, &kbase_drv,
+-                     &kbase_kmod_ops, allocator);
++   pan_kmod_dev_init(&kbase_dev->base, fd, flags, &kbase_drv, allocator,
++                     &kbase_kmod_ops, &kbase_sync_provider);
+ 
+    kbase_dev->is_csf = is_csf;
+    kbase_dev->tracking_page = tracking_page;
+diff --git a/src/panfrost/lib/kmod/pan_kmod.c b/src/panfrost/lib/kmod/pan_kmod.c
+index 8ab8aacdbbd..683bc926447 100644
+--- a/src/panfrost/lib/kmod/pan_kmod.c
++++ b/src/panfrost/lib/kmod/pan_kmod.c
+@@ -31,6 +31,7 @@ static const struct backend {
+    const char *name;
+    const struct pan_kmod_ops *ops;
+ } backends[] = {
++#if defined(HAVE_PAN_KMOD_PANFROST)
+    {
+       "panfrost",
+       &panfrost_kmod_ops,
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_event.c b/src/panfrost/vulkan/csf/panvk_vX_event.c
+index c9efff54d24..c6af2850363 100644
+--- a/src/panfrost/vulkan/csf/panvk_vX_event.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_event.c
+@@ -95,7 +95,7 @@ panvk_per_arch(CreateEvent)(VkDevice _device,
+       struct panvk_priv_bo *sync_bo;
+       VkResult result = panvk_priv_bo_create(
+          device, info.size, PAN_KMOD_BO_FLAG_CSF_EVENT,
+-         VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &sync_bo);
++         VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, NULL, &sync_bo);
+       if (result != VK_SUCCESS) {
+          vk_object_free(&device->vk, pAllocator, event);
+          return result;
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+index bbd9f30e9f1..889cb3bf12e 100644
+--- a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+@@ -1920,7 +1920,7 @@ init_queue(struct panvk_gpu_queue *queue)
+       struct panvk_priv_bo *sync_bo;
+       result = panvk_priv_bo_create(dev, alloc_info.size,
+                                     PAN_KMOD_BO_FLAG_CSF_EVENT,
+-                                    VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++                                    VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                                     &sync_bo);
+       if (result != VK_SUCCESS)
+          return result;
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+index f0b512d0831..cf7cd91a9f5 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
+@@ -364,7 +364,7 @@ emit_gts(struct panvk_cmd_buffer *cmdbuf, struct panvk_batch *batch)
+    struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+    if (!panvk_gts_bo &&
+        panvk_priv_bo_create(dev, PANVK_GTS_SLOTS * 16, 0,
+-                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                             &panvk_gts_bo) != VK_SUCCESS)
+       return;
+    if (!panvk_gts_bo->addr.host)
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
+index 8e0fceb175d..95a319d74b7 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
+@@ -145,6 +145,7 @@ struct panvk_draw_data {
+    struct {
+       uint64_t attribs;
+       uint64_t attrib_bufs;
++      uint64_t varying_bufs;
+    } indirect_info;
+ };
+ 
+diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
+index 5ce59a22458..e18608b9f51 100644
+--- a/src/panfrost/vulkan/panvk_physical_device.c
++++ b/src/panfrost/vulkan/panvk_physical_device.c
+@@ -1502,9 +1502,6 @@ panvk_physical_device_init(struct panvk_physical_device *device,
+    device->formats.all = pan_format_table(arch);
+    device->formats.blendable = pan_blendable_format_table(arch);
+ 
+-   unsigned core_count =
+-      pan_query_core_count(&device->kmod.dev->props);
+-
+    memset(device->name, 0, sizeof(device->name));
+    sprintf(device->name, "%s MC%u",
+            panvk_marketing_name(device->model, core_count), core_count);
+@@ -1616,7 +1613,9 @@ panvk_physical_device_init_kbase(struct panvk_physical_device *device,
+       return result;
+ 
+    device->model = pan_get_model(device->kmod.dev->props.gpu_id,
+-                                 device->kmod.dev->props.gpu_variant);
++                                 device->kmod.dev->props.gpu_variant,
++                                 pan_query_core_count(&device->kmod.dev->props),
++                                 device->kmod.dev->props.gpu_features);
+ 
+    unsigned arch = pan_arch(device->kmod.dev->props.gpu_id);
+ 
+diff --git a/src/panfrost/vulkan/panvk_priv_bo.c b/src/panfrost/vulkan/panvk_priv_bo.c
+index e255a8d259e..681c360cf5f 100644
+--- a/src/panfrost/vulkan/panvk_priv_bo.c
++++ b/src/panfrost/vulkan/panvk_priv_bo.c
+@@ -31,8 +31,11 @@ panvk_priv_bo_create(struct panvk_device *dev, uint64_t size, uint32_t flags,
+                      VkSystemAllocationScope scope, const char *label,
+                      struct panvk_priv_bo **out)
+ {
+-   return panvk_priv_bo_create_kind(dev, size, flags, scope, out,
+-                                    PANVK_MEM_MISC);
++   VkResult result =
++      panvk_priv_bo_create_kind(dev, size, flags, scope, out, PANVK_MEM_MISC);
++   if (result == VK_SUCCESS && label)
++      pan_kmod_set_bo_label(dev->kmod.dev, (*out)->bo, label);
++   return result;
+ }
+ 
+ struct panvk_mem_stats panvk_mem_stats;
+@@ -100,9 +103,6 @@ panvk_priv_bo_create_kind(struct panvk_device *dev, uint64_t size,
+    priv_bo->bo = bo;
+    priv_bo->dev = dev;
+ 
+-   if (label)
+-      pan_kmod_set_bo_label(dev->kmod.dev, bo, label);
+-
+    if (!(flags & PAN_KMOD_BO_FLAG_NO_MMAP)) {
+       priv_bo->addr.host =
+          pan_kmod_bo_mmap(bo, PROT_READ | PROT_WRITE, MAP_SHARED, NULL);
+diff --git a/src/panfrost/vulkan/panvk_vX_cmd_meta.c b/src/panfrost/vulkan/panvk_vX_cmd_meta.c
+index 7460cedfea4..80384fa26b1 100644
+--- a/src/panfrost/vulkan/panvk_vX_cmd_meta.c
++++ b/src/panfrost/vulkan/panvk_vX_cmd_meta.c
+@@ -1419,7 +1419,7 @@ bc_eac_lut_addr(struct panvk_device *dev, uint32_t mode)
+        panvk_priv_bo_create(dev, PANVK_BC_EAC_TABLE_B,
+                             panvk_device_adjust_bo_flags(
+                                dev, PAN_KMOD_BO_FLAG_WB_MMAP),
+-                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++                            VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                             &bo) == VK_SUCCESS) {
+       panvk_bc_eac_expand_table(kind, bo->addr.host);
+       panvk_priv_bo_flush(bo, 0, PANVK_BC_EAC_TABLE_B);
+diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
+index d12c6b01cc8..55ebf94cce3 100644
+--- a/src/panfrost/vulkan/panvk_vX_device.c
++++ b/src/panfrost/vulkan/panvk_vX_device.c
+@@ -173,7 +173,7 @@ alloc_gpu_prerast_arena(struct panvk_device *dev, uint64_t size)
+       panvk_device_adjust_bo_flags(dev, PAN_KMOD_BO_FLAG_WB_MMAP);
+    struct panvk_priv_bo *bo;
+ 
+-   if (panvk_priv_bo_create(dev, size, flags, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++   if (panvk_priv_bo_create(dev, size, flags, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                             &bo) != VK_SUCCESS)
+       return (struct panvk_priv_mem){0};
+ 
+@@ -622,7 +622,7 @@ panvk_init_null_descs(struct panvk_device *dev)
+    result = panvk_priv_bo_create(
+       dev, PANVK_NULL_BO_SIZE,
+       panvk_device_adjust_bo_flags(dev, PAN_KMOD_BO_FLAG_WB_MMAP),
+-      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &dev->null_descs.zero_bo);
++      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &dev->null_descs.zero_bo);
+    if (result != VK_SUCCESS)
+       return result;
+    memset(dev->null_descs.zero_bo->addr.host, 0, PANVK_NULL_BO_SIZE);
+@@ -1016,7 +1016,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+          device, sizeof(struct panvk_gpu_prerast_syncs),
+          device->kmod.dev->props.supported_bo_flags &
+             PAN_KMOD_BO_FLAG_CSF_EVENT,
+-         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->gpu_prerast_syncs);
++         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &device->gpu_prerast_syncs);
+       if (result != VK_SUCCESS)
+          goto err_free_priv_bos;
+ 
+@@ -1083,7 +1083,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+    result = panvk_priv_bo_create(
+       device, heap_size,
+       PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->tiler_heap2);
++      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &device->tiler_heap2);
+    if (result != VK_SUCCESS)
+       goto err_free_priv_bos;
+ #else
+@@ -1091,7 +1091,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+       result = panvk_priv_bo_create(
+          device, heap_size,
+          PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->tiler_heap2);
++         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &device->tiler_heap2);
+       if (result != VK_SUCCESS)
+          goto err_free_priv_bos;
+    }
+@@ -1101,7 +1101,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+       device,
+       PANVK_JM_MAX_VERTICES_INDIRECT * PANVK_JM_MAX_PER_VTX_ATTRIBUTES_INDIRECT_SIZE,
+       PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->indirect_varying_buffer);
++      VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &device->indirect_varying_buffer);
+    if (result != VK_SUCCESS)
+       goto err_free_priv_bos;
+ 
+@@ -1113,7 +1113,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+       result = panvk_priv_bo_create(
+          device, PANVK_TESS_HEAP_SIZE,
+          PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->tess_arena);
++         VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL, &device->tess_arena);
+       if (result != VK_SUCCESS)
+          goto err_free_priv_bos;
+ 
+@@ -1128,7 +1128,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+                PANVK_JM_MAX_VERTICES_INDIRECT *
+                   PANVK_JM_MAX_PER_VTX_ATTRIBUTES_INDIRECT_SIZE,
+                PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-               VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++               VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                &device->indirect_varying_buffer2);
+             if (result != VK_SUCCESS)
+                goto err_free_priv_bos;
+@@ -1140,7 +1140,7 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+                result = panvk_priv_bo_create(
+                   device, PANVK_TESS_GS_SCRATCH_SIZE,
+                   PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT,
+-                  VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
++                  VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, NULL,
+                   &device->tess_gs_scratch[h]);
+                if (result != VK_SUCCESS)
+                   goto err_free_priv_bos;
+diff --git a/src/panfrost/vulkan/panvk_vX_query_pool.c b/src/panfrost/vulkan/panvk_vX_query_pool.c
+index 9ea833a8c9f..5812bc926cd 100644
+--- a/src/panfrost/vulkan/panvk_vX_query_pool.c
++++ b/src/panfrost/vulkan/panvk_vX_query_pool.c
+@@ -146,7 +146,7 @@ panvk_per_arch(CreateQueryPool)(VkDevice _device,
+       struct panvk_priv_bo *avail_bo = NULL;
+       if (panvk_priv_bo_create(device, syncobjs_alloc_info.size,
+                                panvk_device_adjust_bo_flags(device, 0),
+-                               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT,
++                               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, NULL,
+                                &avail_bo) == VK_SUCCESS)
+          pool->available_mem = (struct panvk_priv_mem){
+             .bo = (uintptr_t)avail_bo,
+diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
+index 706f4bdc039..2b2054e4ad2 100644
+--- a/src/panfrost/vulkan/panvk_vX_shader.c
++++ b/src/panfrost/vulkan/panvk_vX_shader.c
+@@ -5378,7 +5378,9 @@ panvk_compile_shader(struct panvk_device *dev,
+     */
+    if (info->stage == MESA_SHADER_VERTEX && !vs_clip_space) {
+       const int idvs_env = panvk_v7_knob_idvs();
+-      const uint32_t prod = (inputs.gpu_id >> 16) & 0xff0f;
++      const uint64_t gpu_id =
++         to_panvk_physical_device(dev->vk.physical)->kmod.dev->props.gpu_id;
++      const uint32_t prod = (gpu_id >> 16) & 0xff0f;
+       /* jm-v7 092: every v6 part (G71 0x6000 too, same generation as G72,
+        * never measured), plus G76.
+        */
+@@ -5562,7 +5564,7 @@ panvk_compile_shader(struct panvk_device *dev,
+                nir_shader_intrinsics_pass(nir,
+                                           panvk_gpu_prerast_collect_out_type,
+                                           nir_metadata_all, &out_types);
+-               NIR_PASS(_, nir, pan_nir_lower_vs_inputs_poly, inputs.gpu_id);
++               NIR_PASS(_, nir, pan_nir_lower_vs_inputs_poly);
+                NIR_PASS(_, nir, panvk_gpu_prerast_lower_vs_outputs);
+                if (info->stage == MESA_SHADER_VERTEX &&
+                    nir->info.writes_memory)
+diff --git a/src/util/u_queue.c b/src/util/u_queue.c
+index fd5f10d608b..7f07c5941c5 100644
+--- a/src/util/u_queue.c
++++ b/src/util/u_queue.c
+@@ -29,6 +29,7 @@
+ #include "c11/threads.h"
+ #include "perf/u_perfetto.h"
+ #include "util/os_time.h"
++#include "util/u_cpu_detect.h"
+ #include "util/u_string.h"
+ #include "util/u_thread.h"
+ #include "util/timespec.h"
+-- 
+2.43.0
+

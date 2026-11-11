@@ -1,17 +1,17 @@
-From ac3593667f3a60049b558e429200901329fd7106 Mon Sep 17 00:00:00 2001
+From a4e258976c89e248b2f2782cb7fe3ee7a0f76012 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 06:04:45 +0300
-Subject: [PATCH] panvk: in-process sampling profiler (PANVK_SELFPROF)
+Subject: [PATCH 08/69] panvk: in-process sampling profiler (PANVK_SELFPROF)
 
 ---
  src/panfrost/vulkan/panvk_instance.c | 152 +++++++++++++++++++++++++++
  1 file changed, 152 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index cbaadac..863902c 100644
+index d4536251c93..5278eb967df 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
-@@ -315,6 +315,158 @@ panvk_load_env_file(void)
+@@ -311,6 +311,158 @@ panvk_load_env_file(void)
     fclose(f);
  }
  

@@ -1,7 +1,7 @@
-From 2b001a2bfde25e4f8844b3e74fdc1bd4c2394055 Mon Sep 17 00:00:00 2001
+From 38790e679cbadac8a24c03362388c992c800c5cf Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:28 +0300
-Subject: [PATCH 27/27] panvk: debugging knobs used for the CTS work
+Subject: [PATCH 27/69] panvk: debugging knobs used for the CTS work
 
 PANVK_NO_LWG=1 disables the large-workgroup split, PANVK_TRACE_JC=1 with
 PANVK_DEBUG=trace decodes each JM job chain after it ran (the call was
@@ -16,10 +16,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  3 files changed, 5 insertions(+), 5 deletions(-)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index beb29e6..70f515c 100644
+index 15c9e8ab244..e452791d8a2 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2579,7 +2579,7 @@ kbase_kmod_import_dmabuf(struct pan_kmod_dev *dev,
+@@ -2577,7 +2577,7 @@ kbase_kmod_import_dmabuf(struct pan_kmod_dev *dev,
        simple_mtx_unlock(&kbase_dev->nc_lock);
     }
     mesa_log(MESA_LOG_DEBUG, MESA_LOG_TAG, "kbase_kmod_bo_alloc_dmabuf: succeeded for %d, bo_size=%lu, handle=%u", kbase_bo->dmabuf_fd, bo_size, handle);
@@ -29,7 +29,7 @@ index beb29e6..70f515c 100644
               (unsigned long long)req.out.gpu_va,
               (unsigned long long)req.out.va_pages,
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index c092bd4..b9006e8 100644
+index c092bd49aee..b9006e850fe 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -417,9 +417,9 @@ panvk_queue_submit_batch(struct panvk_gpu_queue *queue,
@@ -46,10 +46,10 @@ index c092bd4..b9006e8 100644
        if (PANVK_DEBUG(DUMP))
           pandecode_dump_mappings(dev->debug.decode_ctx);
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index b12c32c..f146d68 100644
+index 9c6f645f684..1cd1611f79e 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -832,7 +832,7 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
+@@ -804,7 +804,7 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
                                nir->info.workgroup_size[1],
                                nir->info.workgroup_size[2]};
     const unsigned n = lsize[0] * lsize[1] * lsize[2];

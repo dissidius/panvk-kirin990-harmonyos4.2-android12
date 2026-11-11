@@ -1,7 +1,7 @@
-From db6b74c68bafda8d16cdefccf8093f2c2f2e1a40 Mon Sep 17 00:00:00 2001
+From eba60ecdfc79871af19f96f0d1da5f18f787c899 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 4 Nov 2026 01:04:14 +0300
-Subject: [PATCH 62/62] panvk/jm: overlap only for PCSX2-based emulators by
+Subject: [PATCH 62/69] panvk/jm: overlap only for PCSX2-based emulators by
  default
 
 Overlap (a batch's vertex/tiler chain during the previous fragment job,
@@ -21,10 +21,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  3 files changed, 32 insertions(+), 36 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index a9a5a4b..4c40239 100644
+index fe99f93508e..f0b512d0831 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-@@ -654,23 +654,12 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
+@@ -655,23 +655,12 @@ panvk_per_arch(cmd_alloc_tls_desc)(struct panvk_cmd_buffer *cmdbuf, bool gfx)
     return VK_SUCCESS;
  }
  
@@ -51,7 +51,7 @@ index a9a5a4b..4c40239 100644
  
  VkResult
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 6683501..eac8a43 100644
+index 6683501bef1..eac8a434555 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -63,23 +63,13 @@ static inline int panvk_trace_on_(void) { static int v = -1; if (v < 0) { const
@@ -82,7 +82,7 @@ index 6683501..eac8a43 100644
  
  /* Dependency type on an earlier GPU atom of this queue. Within one
 diff --git a/src/panfrost/vulkan/panvk_v7_knobs.h b/src/panfrost/vulkan/panvk_v7_knobs.h
-index c957045..59895f0 100644
+index c9570452532..59895f0a46b 100644
 --- a/src/panfrost/vulkan/panvk_v7_knobs.h
 +++ b/src/panfrost/vulkan/panvk_v7_knobs.h
 @@ -102,20 +102,27 @@ panvk_v7_knob_on(const char *name, int *cache)

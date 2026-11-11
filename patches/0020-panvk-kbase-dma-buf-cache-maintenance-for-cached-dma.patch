@@ -1,7 +1,7 @@
-From 52bcf51fd9df28a7af424a3aa95b01dbe0e76c77 Mon Sep 17 00:00:00 2001
+From dd8c51b260f004aa78536fb210b30f19bb0733e3 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:07 +0300
-Subject: [PATCH 20/27] panvk/kbase: dma-buf cache maintenance for cached
+Subject: [PATCH 20/69] panvk/kbase: dma-buf cache maintenance for cached
  dma-heap BOs
 
 Cached dma-heap/ION BOs are CPU mapped through the dma-buf, which
@@ -16,10 +16,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 26 insertions(+)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 4d06a7c..beb29e6 100644
+index 9b15d58287e..15c9e8ab244 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2634,6 +2634,15 @@ kbase_kmod_bo_alloc_dmabuf(struct pan_kmod_dev *dev, uint64_t size,
+@@ -2632,6 +2632,15 @@ kbase_kmod_bo_alloc_dmabuf(struct pan_kmod_dev *dev, uint64_t size,
  
     struct pan_kmod_bo *bo = kbase_kmod_import_dmabuf(
        dev, NULL, alloc.fd, alloc.len, kmod_flags, false);
@@ -35,7 +35,7 @@ index 4d06a7c..beb29e6 100644
     close(alloc.fd);
     return bo;
  }
-@@ -3055,6 +3064,23 @@ kbase_kmod_flush_bo_map_syncs(struct pan_kmod_dev *dev)
+@@ -3053,6 +3062,23 @@ kbase_kmod_flush_bo_map_syncs(struct pan_kmod_dev *dev)
        if (kbase_bo->cpu_gpu_coherent)
           continue;
  

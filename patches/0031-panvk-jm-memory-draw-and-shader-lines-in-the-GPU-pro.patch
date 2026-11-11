@@ -1,7 +1,7 @@
-From 8a457cca98690ee8bc90abcb884bcdcb3f7ead75 Mon Sep 17 00:00:00 2001
+From 1ddbd3e51595ede6b3ec5468b4a871d235340df6 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 13:52:44 +0300
-Subject: [PATCH 31/36] panvk/jm: memory, draw and shader lines in the GPU
+Subject: [PATCH 31/69] panvk/jm: memory, draw and shader lines in the GPU
  profile
 
 With PANVK_GPU_PROF=1 the report also gives the application's
@@ -18,7 +18,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  4 files changed, 70 insertions(+)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index b9006e8..6abb68c 100644
+index b9006e850fe..6abb68cba9f 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -231,6 +231,36 @@ panvk_gprof_report_locked(uint64_t now)
@@ -59,7 +59,7 @@ index b9006e8..6abb68c 100644
        int best = -1;
        for (unsigned i = 0; i < panvk_gprof_nkinds; i++)
 diff --git a/src/panfrost/vulkan/panvk_device_memory.c b/src/panfrost/vulkan/panvk_device_memory.c
-index cf9f4c0..c4016b5 100644
+index ebd972502a1..bc27c2aab29 100644
 --- a/src/panfrost/vulkan/panvk_device_memory.c
 +++ b/src/panfrost/vulkan/panvk_device_memory.c
 @@ -10,6 +10,7 @@
@@ -70,9 +70,9 @@ index cf9f4c0..c4016b5 100644
  #include "panvk_entrypoints.h"
  
  #include "pan_props.h"
-@@ -235,6 +236,13 @@ panvk_AllocateMemory(VkDevice _device,
+@@ -224,6 +225,13 @@ panvk_AllocateMemory(VkDevice _device,
  
-    p_atomic_add(&physical_device->memory.heap_used,
+    p_atomic_add(&physical_device->memory.budget->heap_used,
                  (uint64_t)pan_kmod_bo_size(mem->bo));
 +   {
 +      const uint64_t v = p_atomic_add_return(&panvk_mem_stats.app_B,
@@ -84,9 +84,9 @@ index cf9f4c0..c4016b5 100644
  
     *pMem = panvk_device_memory_to_handle(mem);
  
-@@ -270,6 +278,8 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
+@@ -259,6 +267,8 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
  
-    p_atomic_add(&physical_device->memory.heap_used,
+    p_atomic_add(&physical_device->memory.budget->heap_used,
                  -((int64_t)pan_kmod_bo_size(mem->bo)));
 +   p_atomic_add(&panvk_mem_stats.app_B, -((int64_t)pan_kmod_bo_size(mem->bo)));
 +   p_atomic_dec(&panvk_mem_stats.app_count);
@@ -94,7 +94,7 @@ index cf9f4c0..c4016b5 100644
     if (device->debug.decode_ctx) {
        pandecode_inject_free(device->debug.decode_ctx, mem->addr.dev,
 diff --git a/src/panfrost/vulkan/panvk_priv_bo.h b/src/panfrost/vulkan/panvk_priv_bo.h
-index e2860aa..fd1ed65 100644
+index 746c11747f5..460ea42a656 100644
 --- a/src/panfrost/vulkan/panvk_priv_bo.h
 +++ b/src/panfrost/vulkan/panvk_priv_bo.h
 @@ -49,6 +49,11 @@ struct panvk_mem_stats {
@@ -110,10 +110,10 @@ index e2860aa..fd1ed65 100644
  
  extern struct panvk_mem_stats panvk_mem_stats;
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index 515c118..4935eb5 100644
+index 9b3e959e19a..e12738cb469 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -3794,6 +3794,31 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -3781,6 +3781,31 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
     struct util_dynarray binary = UTIL_DYNARRAY_INIT;
     pan_shader_compile(nir, &input, &binary, &shader->info);
  

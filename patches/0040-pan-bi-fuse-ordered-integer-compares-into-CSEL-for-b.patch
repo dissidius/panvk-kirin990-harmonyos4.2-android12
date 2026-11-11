@@ -1,7 +1,7 @@
-From c6897a30e4f7f0c15ebd744b8b9ba94d65f2c8e9 Mon Sep 17 00:00:00 2001
+From 2507c76fd196db5430033f13d2c7ada329842d50 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 17:32:37 +0300
-Subject: [PATCH 40/41] pan/bi: fuse ordered integer compares into CSEL for
+Subject: [PATCH 40/69] pan/bi: fuse ordered integer compares into CSEL for
  bcsel_pan
 
 A bcsel_pan whose condition is a 32-bit ordered integer comparison was
@@ -24,7 +24,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 40 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/compiler/bifrost/bifrost_compile.c b/src/panfrost/compiler/bifrost/bifrost_compile.c
-index 4c61608..a24f7d4 100644
+index 3ec115ac6ed..0be1b3a4991 100644
 --- a/src/panfrost/compiler/bifrost/bifrost_compile.c
 +++ b/src/panfrost/compiler/bifrost/bifrost_compile.c
 @@ -2939,10 +2939,49 @@ bi_emit_alu(bi_builder *b, nir_alu_instr *instr)

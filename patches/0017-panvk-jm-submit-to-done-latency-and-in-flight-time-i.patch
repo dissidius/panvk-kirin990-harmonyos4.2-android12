@@ -1,15 +1,15 @@
-From 5798e4913d0f063712e7894615b642d3ba72ef50 Mon Sep 17 00:00:00 2001
+From 8f57533ed9c0c060aea14fdb173d6b0d6f0c1c6c Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 13:21:00 +0300
-Subject: [PATCH] panvk/jm: submit-to-done latency and in-flight time in GPU
- profile
+Subject: [PATCH 17/69] panvk/jm: submit-to-done latency and in-flight time in
+ GPU profile
 
 ---
  src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c | 28 ++++++++++++++++++++-
  1 file changed, 27 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index f83512e..cb1ed5a 100644
+index f83512e5c68..cb1ed5ab60c 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -186,6 +186,9 @@ static int panvk_gprof_kind_of[256];

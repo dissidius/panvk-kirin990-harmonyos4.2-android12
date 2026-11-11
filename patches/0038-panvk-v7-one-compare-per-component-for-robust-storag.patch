@@ -1,7 +1,7 @@
-From 5e7df5eda668113f5457e45df2f1e7084a2de272 Mon Sep 17 00:00:00 2001
+From d4b8c2a05c393efecf9e412877ce13dab7ae5141 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 14:41:01 +0300
-Subject: [PATCH 38/39] panvk/v7: one compare per component for robust storage
+Subject: [PATCH 38/69] panvk/v7: one compare per component for robust storage
  buffer loads
 
 The bounds check of a bounded load (bound >= size && bound - size >=
@@ -24,10 +24,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 16 insertions(+), 12 deletions(-)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index d430afa..57644fa 100644
+index 5e1d49b39bb..cbc975f72f7 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -488,8 +488,9 @@ panvk_lower_bounded_load(nir_builder *b, nir_intrinsic_instr *intr,
+@@ -460,8 +460,9 @@ panvk_lower_bounded_load(nir_builder *b, nir_intrinsic_instr *intr,
     nir_def *offset = intr->src[1].ssa;
     nir_def *bound = intr->src[2].ssa;
  
@@ -39,7 +39,7 @@ index d430afa..57644fa 100644
     nir_def *safe_offset = nir_bcsel(b, fits, offset, nir_imm_int(b, 0));
     nir_def *addr = nir_iadd(b, base, nir_u2u64(b, safe_offset));
     /* Offset 0 keeps the load's alignment; storage buffer descriptors are
-@@ -728,8 +729,14 @@ panvk_vectorize_bounded_loads(nir_shader *nir)
+@@ -700,8 +701,14 @@ panvk_vectorize_bounded_loads(nir_shader *nir)
              nir_def *x = nir_imm_int(&b, cs[i].chunk);
              if (cs[i].x.def)
                 x = nir_iadd(&b, nir_imul_imm(&b, nir_mov_scalar(&b, cs[i].x), cs[i].mul), x);
@@ -56,7 +56,7 @@ index d430afa..57644fa 100644
              nir_def *addr = nir_iadd(&b, first->src[0].ssa,
                                       nir_u2u64(&b, nir_bcsel(&b, any_fits, x,
                                                               nir_imm_int(&b, 0))));
-@@ -743,14 +750,11 @@ panvk_vectorize_bounded_loads(nir_shader *nir)
+@@ -715,14 +722,11 @@ panvk_vectorize_bounded_loads(nir_shader *nir)
                 nir_intrinsic_instr *intr = cs[j].intr;
                 const unsigned comps = intr->def.num_components;
                 b.cursor = nir_before_instr(&intr->instr);

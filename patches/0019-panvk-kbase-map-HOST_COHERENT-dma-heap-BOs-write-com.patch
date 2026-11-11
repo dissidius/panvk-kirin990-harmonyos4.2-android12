@@ -1,7 +1,7 @@
-From de419338c66731da3f885851ceba51473f6be01d Mon Sep 17 00:00:00 2001
+From b880340bd4d8a46eaf8bc885505c700310aedb00 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 08:21:07 +0300
-Subject: [PATCH 19/27] panvk/kbase: map HOST_COHERENT dma-heap BOs
+Subject: [PATCH 19/69] panvk/kbase: map HOST_COHERENT dma-heap BOs
  write-combined
 
 With memoryMapPlaced (VK_EXT_map_memory_placed, used by Wine WoW64 for
@@ -17,10 +17,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 117a537..4d06a7c 100644
+index 77f42abcf04..9b15d58287e 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2616,7 +2616,11 @@ kbase_kmod_bo_alloc_dmabuf(struct pan_kmod_dev *dev, uint64_t size,
+@@ -2614,7 +2614,11 @@ kbase_kmod_bo_alloc_dmabuf(struct pan_kmod_dev *dev, uint64_t size,
        struct kbase_ion_alloc ia = {
           .len = alloc.len,
           .heap_id_mask = kbase_dev->ion_heap_mask,

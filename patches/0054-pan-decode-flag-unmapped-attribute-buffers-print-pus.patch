@@ -1,7 +1,7 @@
-From 140f694ccd7d9020a7b87de15fa023997c8d5315 Mon Sep 17 00:00:00 2001
+From 701fc3bcca6e2be16932124fb8d9fda73d4d87da Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 22:56:13 +0300
-Subject: [PATCH 54/54] pan/decode: flag unmapped attribute buffers, print push
+Subject: [PATCH 54/69] pan/decode: flag unmapped attribute buffers, print push
  uniforms
 
 Attribute (storage image) buffers outside every known mapping or running
@@ -15,7 +15,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 30 insertions(+)
 
 diff --git a/src/panfrost/genxml/decode_jm.c b/src/panfrost/genxml/decode_jm.c
-index f01891b..38d04b5 100644
+index f01891bdb29..38d04b59aa8 100644
 --- a/src/panfrost/genxml/decode_jm.c
 +++ b/src/panfrost/genxml/decode_jm.c
 @@ -61,6 +61,23 @@ pandecode_attributes(struct pandecode_context *ctx, uint64_t addr, int count,

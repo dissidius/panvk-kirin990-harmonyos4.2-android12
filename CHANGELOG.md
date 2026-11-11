@@ -1,6 +1,43 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (testing) — 2026-11-11
+
+**Mesa 27.** The driver moves from Mesa 26.3-devel to Mesa main (27.0.0-devel, `a379b735`),
+with the zenithblue series and all 63 earlier patches carried over. Mali-G76, G72 and G52 all
+start on it (tested on a Huawei P40, Samsung A51 and Vivo V21s).
+
+- **Winlator renderer on Samsung and MediaTek phones** (0068, 0069). Selecting PanVK as
+  Winlator's *Renderer Driver* froze on a Samsung A51 (Android 16) and showed a black screen on a
+  Vivo V21s (Helio G80). Samsung: Android 16 asks the driver for swapchain usage in a new way, so
+  gralloc allocated AFBC-compressed buffers that PanVK cannot write, and the compositor faulted on
+  every frame; buffers are now always linear. Vivo: MediaTek's gralloc puts a metadata file
+  before the buffer in its handle, and PanVK imported the wrong one. Both now work, as does the
+  Huawei P40 (unchanged).
+- **32-bit games on MediaTek phones with older kernels** (0066). Placed memory maps below 4 GiB
+  (what Wine needs for 32-bit games) failed on kernels with the legacy ION interface (Helio G80);
+  the driver now uses it. Winlator's own Vulkan wrapper has the same problem on these phones: set
+  **`WRAPPER_RESOURCE_TYPE=opaque`** in the container (NFS Most Wanted works on the Vivo with it).
+- **Failed memory maps are explained in `panvk_errors.txt`** (0067): the kind of map, its size and
+  why the driver could not provide shareable memory.
+- **panvk-report 1.3: GameNative support**, attached to this release. In GameNative the tool
+  collects Wine's log, the two newest crash logs and the newest saved app log
+  (`gamenative-logs/` in the zip), and only the logs of the app it runs in (`App:` line in
+  `report.txt`). Lines in any log that mention passwords, tokens, cookies, account names or Steam
+  Guard are removed and Steam IDs masked, since GameNative signs in to Steam.
+- GameNative loads this driver (Adrenotools); the extension count on its own screen comes from
+  the stock Mali driver and doesn't change. Use `panvk-report.exe` or `DXVK_HUD=devinfo` to see
+  which driver a game uses.
+- Build: `patches/base/` holds the zenithblue series on Mesa `a379b735` as one diff, then
+  `patches/0001-0069`; the 1.2.x series is in `patches/mesa-26.3/`. Mesa 27 needs
+  `-Dpanfrost-rust=false` (or Rust 1.85) for its Valhall-only Kraid compiler.
+- **Main page reorganised** around the tested GPUs (P40, Galaxy A51, Vivo V21s), with a table of
+  common problems and their fixes; games and FPS
+  moved to `docs/GAMES.md`, test results to `docs/TESTS.md`, the patch table to
+  `docs/PATCHES.md`, driver options to `docs/OPTIONS.md` and build steps to `docs/BUILD.md`.
+- CTS on the release build (P40): regression sample 18 846 pass plus the two known cases; sync2
+  1 301, workgroup memory 548, large workgroups and subgroups 407, rasterization order 122 pass;
+  tile barriers 2 907 pass (12 more than 1.2.8, from Mesa 27's feedback-loop support) and the
+  same 21 known failures. No new failures.
 
 - **panvk-report 1.3: GameNative support.** In GameNative the tool collects Wine's log, the two
   newest crash logs and the newest saved app log (`gamenative-logs/` in the zip), and it collects

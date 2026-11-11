@@ -1,7 +1,7 @@
-From decd41f77b02b802c4f70a2d5c48f5461ad4d1ae Mon Sep 17 00:00:00 2001
+From c664d98301c0d343710159ff3b28bc9399326a6c Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 28 Oct 2026 19:26:34 +0300
-Subject: [PATCH 43/45] panvk/jm: skip no-op barriers; GPU profile in apps
+Subject: [PATCH 43/69] panvk/jm: skip no-op barriers; GPU profile in apps
  without storage access
 
 - A pipeline barrier whose second scope is only TOP_OF_PIPE (or whose
@@ -25,10 +25,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  6 files changed, 101 insertions(+), 2 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index bb6914d..8799e2a 100644
+index a22991cbdb6..692d28df908 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-@@ -720,18 +720,68 @@ panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
+@@ -758,18 +758,68 @@ panvk_per_arch(EndCommandBuffer)(VkCommandBuffer commandBuffer)
     return vk_command_buffer_end(&cmdbuf->vk);
  }
  
@@ -98,7 +98,7 @@ index bb6914d..8799e2a 100644
        panvk_per_arch(cmd_close_batch)(cmdbuf);
        panvk_per_arch(cmd_open_batch)(cmdbuf);
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 9575d2a..2d2cdb4 100644
+index 2ca7d5e0daa..c775d4b91d9 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -7547,6 +7547,8 @@ panvk_per_arch(CmdBeginRendering)(VkCommandBuffer commandBuffer,
@@ -110,7 +110,7 @@ index 9575d2a..2d2cdb4 100644
     /* When resuming from a suspended pass, the state should be unchanged. */
     if (resuming && cmdbuf->cur_batch) {
        state->render.flags = pRenderingInfo->flags;
-@@ -7572,6 +7574,8 @@ panvk_per_arch(CmdEndRendering)(VkCommandBuffer commandBuffer)
+@@ -7574,6 +7576,8 @@ panvk_per_arch(CmdEndRendering2KHR)(
  {
     VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
  
@@ -120,7 +120,7 @@ index 9575d2a..2d2cdb4 100644
        const struct pan_fb_load *fb_load = &cmdbuf->state.gfx.render.fb.load;
        bool always_load = fb_load->z.always || fb_load->s.always;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index b17a9ce..3a8385b 100644
+index b17a9ce2d53..3a8385bc70e 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -267,6 +267,13 @@ panvk_gprof_report_locked(uint64_t now)
@@ -138,10 +138,10 @@ index b17a9ce..3a8385b 100644
     for (unsigned r = 0; r < 16; r++) {
        int best = -1;
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index a743e2c..4da6ca9 100644
+index e98b70c1ffc..5a69dbd914c 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
-@@ -299,8 +299,25 @@ static void __attribute__((constructor))
+@@ -295,8 +295,25 @@ static void __attribute__((constructor))
  panvk_load_env_file(void)
  {
     FILE *f = fopen("/sdcard/Download/panvk_env.txt", "r");
@@ -170,7 +170,7 @@ index a743e2c..4da6ca9 100644
     while (fgets(line, sizeof(line), f)) {
        line[strcspn(line, "\r\n")] = 0;
 diff --git a/src/panfrost/vulkan/panvk_priv_bo.h b/src/panfrost/vulkan/panvk_priv_bo.h
-index 4a09635..dbf8a6b 100644
+index 7b077bd58c4..620c9be29ef 100644
 --- a/src/panfrost/vulkan/panvk_priv_bo.h
 +++ b/src/panfrost/vulkan/panvk_priv_bo.h
 @@ -58,6 +58,10 @@ struct panvk_mem_stats {
@@ -185,7 +185,7 @@ index 4a09635..dbf8a6b 100644
  
  extern struct panvk_mem_stats panvk_mem_stats;
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index 57644fa..9cd7bee 100644
+index cbc975f72f7..154b56d3f43 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
 @@ -29,6 +29,7 @@
@@ -196,7 +196,7 @@ index 57644fa..9cd7bee 100644
  #include "util/format/u_format.h"
  #include "poly/geometry.h"
  #include "poly/tessellator.h"
-@@ -4151,8 +4152,24 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -4138,8 +4139,24 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
     input.fau.promote_immediates = true;
  
     struct util_dynarray binary = UTIL_DYNARRAY_INIT;

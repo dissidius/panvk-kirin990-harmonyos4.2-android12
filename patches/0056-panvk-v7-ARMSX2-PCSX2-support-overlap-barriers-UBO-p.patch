@@ -1,7 +1,7 @@
-From 941fb27950acca0a0826930efe5caaccb20f47c0 Mon Sep 17 00:00:00 2001
+From fb293913308a00d2215010ac4cf8250b6260936a Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Sat, 31 Oct 2026 12:06:17 +0300
-Subject: [PATCH 56/56] panvk: v7 ARMSX2 (PCSX2) support, overlap barriers, UBO
+Subject: [PATCH 56/69] panvk: v7 ARMSX2 (PCSX2) support, overlap barriers, UBO
  push
 
 Kingdom Hearts in ARMSX2 on the G76 (Kirin 990): 5-8 FPS -> 27-30.
@@ -48,7 +48,7 @@ forced on.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- src/panfrost/vulkan/jm/panvk_cmd_buffer.h     |  14 +
+ src/panfrost/vulkan/jm/panvk_cmd_buffer.h     |  13 +
  src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c  | 242 +++++++++++++++++-
  src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c    | 190 +++++++++++++-
  src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c   |  83 +++++-
@@ -70,10 +70,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  .../vulkan/panvk_vX_nir_lower_descriptors.c   |  85 +++++-
  .../vulkan/panvk_vX_physical_device.c         |  12 +-
  src/panfrost/vulkan/panvk_vX_shader.c         |  35 ++-
- 22 files changed, 1001 insertions(+), 58 deletions(-)
+ 22 files changed, 1000 insertions(+), 58 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index ed25a97..d8f9239 100644
+index ce4388017bb..72287cdefb3 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -37,6 +37,9 @@ unsigned panvk_per_arch(jc_add_hoisted)(struct panvk_batch *batch, unsigned type
@@ -106,21 +106,21 @@ index ed25a97..d8f9239 100644
     struct panvk_pool desc_pool;
     struct panvk_pool varying_pool;
     /* Growable GPU-only memory: geometry emulation of large tess draws. */
-@@ -265,4 +274,9 @@ void panvk_per_arch(cmd_bind_shaders)(struct vk_command_buffer *vk_cmd,
-                                       const mesa_shader_stage *stages,
-                                       struct vk_shader **const shaders);
- 
+@@ -270,5 +279,9 @@ void panvk_per_arch(cmd_bind_shaders)(struct vk_command_buffer *vk_cmd,
+  * so that it can be used in dependencies */
+ VkResult panvk_per_arch(cmd_init_poly_heap)(struct panvk_cmd_buffer *cmdbuf,
+                                             unsigned *job_id);
 +/* PANVK_GPU_TS=1 (GPU profile): the {start, end} GPU timestamps of a
 + * batch's vertex/tiler chain. */
 +bool panvk_per_arch(gts_on)(void);
 +const volatile uint64_t *panvk_per_arch(gts_host)(unsigned slot);
-+
+ 
  #endif
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index 8799e2a..60c8b07 100644
+index 692d28df908..1f997ea0be0 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-@@ -305,6 +305,81 @@ splice_hoisted_jobs(struct panvk_cmd_buffer *cmdbuf, struct panvk_batch *batch)
+@@ -306,6 +306,81 @@ splice_hoisted_jobs(struct panvk_cmd_buffer *cmdbuf, struct panvk_batch *batch)
     batch->hoist_jc = (struct pan_jc){0};
  }
  
@@ -202,7 +202,7 @@ index 8799e2a..60c8b07 100644
  static void
  cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
  {
-@@ -349,6 +424,9 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
+@@ -350,6 +425,9 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
  
     list_addtail(&batch->node, &cmdbuf->batches);
  
@@ -212,7 +212,7 @@ index 8799e2a..60c8b07 100644
     if (batch->tlsinfo.tls.size) {
        unsigned thread_tls_alloc =
           pan_query_thread_tls_alloc(&phys_dev->kmod.dev->props);
-@@ -557,9 +635,13 @@ panvk_overlap_enabled(void)
+@@ -558,9 +636,13 @@ panvk_overlap_enabled(void)
     static int on = -1;
     if (on < 0) {
        const char *e = getenv("PANVK_OVERLAP");
@@ -229,7 +229,7 @@ index 8799e2a..60c8b07 100644
     }
     return on;
  }
-@@ -690,6 +772,8 @@ panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf)
+@@ -691,6 +773,8 @@ panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf)
     cmdbuf->cur_batch->jobs = UTIL_DYNARRAY_INIT;
     cmdbuf->cur_batch->diag.opener = (uintptr_t)__builtin_return_address(0);
     cmdbuf->cur_batch->diag.precomp = -1;
@@ -238,7 +238,7 @@ index 8799e2a..60c8b07 100644
  #if PAN_ARCH == 9
     cmdbuf->cur_batch->malloc_vertex_jobs = UTIL_DYNARRAY_INIT;
  #endif
-@@ -754,6 +838,108 @@ panvk_dependency_is_noop(const VkDependencyInfo *d)
+@@ -792,6 +876,108 @@ panvk_dependency_is_noop(const VkDependencyInfo *d)
     return true;
  }
  
@@ -347,7 +347,7 @@ index 8799e2a..60c8b07 100644
  VKAPI_ATTR void VKAPI_CALL
  panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
                                      const VkDependencyInfo *pDependencyInfo)
-@@ -774,6 +960,48 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
+@@ -812,6 +998,48 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
        return;
     }
  
@@ -396,7 +396,7 @@ index 8799e2a..60c8b07 100644
     /* Caches are flushed/invalidated at batch boundaries for now, nothing to do
      * for memory barriers assuming we implement barriers with the creation of a
      * new batch.
-@@ -787,6 +1015,13 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
+@@ -825,6 +1053,13 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
        panvk_per_arch(cmd_open_batch)(cmdbuf);
     }
  
@@ -410,7 +410,7 @@ index 8799e2a..60c8b07 100644
     /* BC emulation: an image leaving VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT
      * has zero blocks, whose decoded texels are not zero (BC1 decodes them
      * to opaque black). Decode them as CSF does. The internal barriers it
-@@ -803,6 +1038,7 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
+@@ -841,6 +1076,7 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
        container_of(vk_cmdbuf, struct panvk_cmd_buffer, vk);
  
     vk_command_buffer_reset(&cmdbuf->vk);
@@ -419,7 +419,7 @@ index 8799e2a..60c8b07 100644
     list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
        list_del(&batch->node);
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 4c986eb..563886f 100644
+index e8f0e40b0c8..82450c4df3e 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -16,6 +16,7 @@
@@ -449,7 +449,7 @@ index 4c986eb..563886f 100644
     /* A job the indirect draw helper must wait for: the one that writes the
      * command (vkCmdDrawIndirectByteCountEXT), 0 for none.
      */
-@@ -154,11 +160,20 @@ enum panvk_tess_phase {
+@@ -153,11 +159,20 @@ enum panvk_tess_phase {
     PANVK_TESS_PHASE_TES,
  };
  
@@ -471,7 +471,7 @@ index 4c986eb..563886f 100644
  }
  
  /* Geometry shader input assembly: how the draw's topology groups vertices
-@@ -339,7 +354,10 @@ static VkResult
+@@ -338,7 +353,10 @@ static VkResult
  panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
                            struct panvk_draw_data *draw)
  {
@@ -483,7 +483,7 @@ index 4c986eb..563886f 100644
                  dyn_gfx_state_dirty(cmdbuf, RS_DEPTH_CLAMP_ENABLE) ||
                  dyn_gfx_state_dirty(cmdbuf, RS_DEPTH_CLIP_ENABLE) ||
                  dyn_gfx_state_dirty(cmdbuf, RS_DEPTH_BIAS_ENABLE) ||
-@@ -452,14 +470,17 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
+@@ -451,14 +469,17 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
                               MESA_VK_RP_ATTACHMENT_DEPTH_BIT);
           enum pan_earlyzs_zs_tilebuf_read zs_read =
              (z_attachment_read(fs, &dyns->ial) ||
@@ -503,7 +503,7 @@ index 4c986eb..563886f 100644
  
           bool writes_zs = writes_z || writes_s;
           bool zs_always_passes = ds_test_always_passes(cmdbuf);
-@@ -554,6 +575,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
+@@ -553,6 +574,7 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
     }
  
     cmdbuf->state.gfx.fs.rsd = ptr.gpu;
@@ -511,7 +511,7 @@ index 4c986eb..563886f 100644
     draw->fs.rsd = cmdbuf->state.gfx.fs.rsd;
     return VK_SUCCESS;
  }
-@@ -1627,6 +1649,14 @@ panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
+@@ -1626,6 +1648,14 @@ panvk_emit_tiler_primitive(struct panvk_cmd_buffer *cmdbuf,
        /* In case of indirect draw, the descriptor will be patched at runtime */
        cfg.index_count = is_indirect_draw(draw) ? 1 : draw->info.vertex.count;
  
@@ -728,7 +728,7 @@ index 4c986eb..563886f 100644
  
     {
        struct panvk_batch *b = cmdbuf->cur_batch;
-@@ -7732,6 +7909,7 @@ panvk_per_arch(CmdEndRendering)(VkCommandBuffer commandBuffer)
+@@ -7734,6 +7911,7 @@ panvk_per_arch(CmdEndRendering2KHR)(
           panvk_per_arch(cmd_alloc_fb_desc)(cmdbuf);
  
        cmdbuf->state.gfx.render.fb.needs_store = true;
@@ -737,7 +737,7 @@ index 4c986eb..563886f 100644
        panvk_per_arch(cmd_close_batch)(cmdbuf);
        cmdbuf->cur_batch = NULL;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index d5715ef..5501b69 100644
+index d5715ef748c..5501b696db3 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -71,9 +71,13 @@ panvk_overlap_enabled(void)
@@ -896,7 +896,7 @@ index d5715ef..5501b69 100644
              /* The first vertex/tiler/compute chain must be submitted too
               * (it can be a buffer upload the app relies on). Submit it
 diff --git a/src/panfrost/vulkan/panvk_buffer.c b/src/panfrost/vulkan/panvk_buffer.c
-index 1a29470..cd5d6cf 100644
+index 9301fc70f40..69970c13dc7 100644
 --- a/src/panfrost/vulkan/panvk_buffer.c
 +++ b/src/panfrost/vulkan/panvk_buffer.c
 @@ -89,6 +89,8 @@ panvk_BindBufferMemory2(VkDevice _device, uint32_t bindInfoCount,
@@ -909,7 +909,7 @@ index 1a29470..cd5d6cf 100644
        panvk_address_binding_report(device, &buffer->vk.base,
                                     buffer->vk.device_address, buffer->vk.size,
 diff --git a/src/panfrost/vulkan/panvk_buffer.h b/src/panfrost/vulkan/panvk_buffer.h
-index 5b3b47f..3698ab0 100644
+index 5b3b47f1766..3698ab07e27 100644
 --- a/src/panfrost/vulkan/panvk_buffer.h
 +++ b/src/panfrost/vulkan/panvk_buffer.h
 @@ -12,8 +12,13 @@
@@ -927,10 +927,10 @@ index 5b3b47f..3698ab0 100644
  
  VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_buffer, vk.base, VkBuffer,
 diff --git a/src/panfrost/vulkan/panvk_cmd_draw.h b/src/panfrost/vulkan/panvk_cmd_draw.h
-index 5a36dc2..dd2b6f6 100644
+index fddec5c52a6..12abd1eaffa 100644
 --- a/src/panfrost/vulkan/panvk_cmd_draw.h
 +++ b/src/panfrost/vulkan/panvk_cmd_draw.h
-@@ -53,6 +53,9 @@ struct panvk_resolve_attachment {
+@@ -54,6 +54,9 @@ struct panvk_resolve_attachment {
  
  struct panvk_rendering_state {
     VkRenderingFlags flags;
@@ -940,7 +940,7 @@ index 5a36dc2..dd2b6f6 100644
     uint32_t layer_count;
     uint32_t view_mask;
     enum u_tristate first_provoking_vertex;
-@@ -233,6 +236,8 @@ struct panvk_cmd_graphics_state {
+@@ -234,6 +237,8 @@ struct panvk_cmd_graphics_state {
        bool required;
  #if PAN_ARCH < 9
        uint64_t rsd;
@@ -949,7 +949,7 @@ index 5a36dc2..dd2b6f6 100644
  #endif
     } fs;
  
-@@ -364,6 +369,11 @@ struct panvk_cmd_graphics_state {
+@@ -365,6 +370,11 @@ struct panvk_cmd_graphics_state {
        uint64_t dev_addr;
        uint64_t size;
        uint8_t index_size;
@@ -962,7 +962,7 @@ index 5a36dc2..dd2b6f6 100644
  
     struct {
 diff --git a/src/panfrost/vulkan/panvk_descriptor_set.h b/src/panfrost/vulkan/panvk_descriptor_set.h
-index 4da2625..bdb4fe4 100644
+index 4da2625315e..bdb4fe4aaac 100644
 --- a/src/panfrost/vulkan/panvk_descriptor_set.h
 +++ b/src/panfrost/vulkan/panvk_descriptor_set.h
 @@ -54,6 +54,10 @@ struct panvk_descriptor_set {
@@ -977,10 +977,10 @@ index 4da2625..bdb4fe4 100644
  
     /* Includes adjustment for variable-sized descriptors */
 diff --git a/src/panfrost/vulkan/panvk_device_memory.c b/src/panfrost/vulkan/panvk_device_memory.c
-index c4016b5..c0fc9e2 100644
+index bc27c2aab29..58c4ea0c987 100644
 --- a/src/panfrost/vulkan/panvk_device_memory.c
 +++ b/src/panfrost/vulkan/panvk_device_memory.c
-@@ -263,6 +263,28 @@ err_destroy_mem:
+@@ -252,6 +252,28 @@ err_destroy_mem:
     return result;
  }
  
@@ -1009,7 +1009,7 @@ index c4016b5..c0fc9e2 100644
  VKAPI_ATTR void VKAPI_CALL
  panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
                   const VkAllocationCallbacks *pAllocator)
-@@ -296,6 +318,9 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
+@@ -285,6 +307,9 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
        assert(!ret);
     }
  
@@ -1020,7 +1020,7 @@ index c4016b5..c0fc9e2 100644
                                  pan_kmod_bo_size(mem->bo),
                                  VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
 diff --git a/src/panfrost/vulkan/panvk_device_memory.h b/src/panfrost/vulkan/panvk_device_memory.h
-index 6fc545b..ed3e19d 100644
+index 6fc545b6a0f..ed3e19d1f24 100644
 --- a/src/panfrost/vulkan/panvk_device_memory.h
 +++ b/src/panfrost/vulkan/panvk_device_memory.h
 @@ -25,8 +25,16 @@ struct panvk_device_memory {
@@ -1041,7 +1041,7 @@ index 6fc545b..ed3e19d 100644
                                 VK_OBJECT_TYPE_DEVICE_MEMORY)
  
 diff --git a/src/panfrost/vulkan/panvk_image.c b/src/panfrost/vulkan/panvk_image.c
-index 152d02b..a2325fa 100644
+index 94239eee404..ac1803c09f5 100644
 --- a/src/panfrost/vulkan/panvk_image.c
 +++ b/src/panfrost/vulkan/panvk_image.c
 @@ -1074,6 +1074,17 @@ panvk_image_init(struct panvk_image *image,
@@ -1063,7 +1063,7 @@ index 152d02b..a2325fa 100644
     /* Some modifiers like AFBC affect some decisions we make for vkmeta, but
      * we don't want to outright prevent these modifiers. If those weren't used,
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index 85c1df3..db859ad 100644
+index 7c13287b23f..a37efbbdc2e 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
 @@ -19,6 +19,7 @@
@@ -1074,7 +1074,7 @@ index 85c1df3..db859ad 100644
  #include <limits.h>
  #include <stdio.h>
  #include <unistd.h>
-@@ -295,15 +296,31 @@ panvk_init_dri_options(struct panvk_instance *instance)
+@@ -291,15 +292,31 @@ panvk_init_dri_options(struct panvk_instance *instance)
   * inside apps (Winlator) whose environment cannot be edited.  Only PANVK_*,
   * PAN_*, MESA_*, BIFROST_* and heap_memory_percent; existing variables are
   * kept. */
@@ -1109,7 +1109,7 @@ index 85c1df3..db859ad 100644
        if (c) {
           if (!fgets(pkg, sizeof(pkg), c))
              pkg[0] = 0;
-@@ -314,10 +331,14 @@ panvk_load_env_file(void)
+@@ -310,10 +327,14 @@ panvk_load_env_file(void)
           return;
        snprintf(path, sizeof(path), "/sdcard/Android/data/%s/files/panvk_env.txt",
                 pkg);
@@ -1126,7 +1126,7 @@ index 85c1df3..db859ad 100644
     char line[256];
     while (fgets(line, sizeof(line), f)) {
        line[strcspn(line, "\r\n")] = 0;
-@@ -344,8 +365,19 @@ panvk_load_env_file(void)
+@@ -340,8 +361,19 @@ panvk_load_env_file(void)
      * statistics and disassembly with BIFROST_MESA_DEBUG) to a file, for
      * apps like Winlator whose stderr goes nowhere. */
     const char *errf = getenv("PANVK_STDERR_FILE");
@@ -1148,7 +1148,7 @@ index 85c1df3..db859ad 100644
  }
  
  /* Testing aid: PANVK_SELFPROF=1 starts an in-process sampling profiler.
-@@ -383,8 +415,34 @@ selfprof_handler(int sig, siginfo_t *si, void *uc_)
+@@ -379,8 +411,34 @@ selfprof_handler(int sig, siginfo_t *si, void *uc_)
     selfprof_tids[i] = (int)syscall(SYS_gettid);
  }
  
@@ -1184,7 +1184,7 @@ index 85c1df3..db859ad 100644
     uintptr_t off;
     unsigned n;
  };
-@@ -399,7 +457,7 @@ selfprof_add(struct selfprof_bucket *b, unsigned *nb, const char *name,
+@@ -395,7 +453,7 @@ selfprof_add(struct selfprof_bucket *b, unsigned *nb, const char *name,
           return;
        }
     }
@@ -1193,7 +1193,7 @@ index 85c1df3..db859ad 100644
        snprintf(b[*nb].name, sizeof(b[*nb].name), "%s", name);
        b[*nb].off = off;
        b[*nb].n = 1;
-@@ -423,7 +481,7 @@ selfprof_thread(void *arg)
+@@ -419,7 +477,7 @@ selfprof_thread(void *arg)
                 continue;
              char path[64], buf[256];
              snprintf(path, sizeof(path), "/proc/self/task/%d/stat", tid);
@@ -1202,7 +1202,7 @@ index 85c1df3..db859ad 100644
              if (!f)
                 continue;
              size_t len = fread(buf, 1, sizeof(buf) - 1, f);
-@@ -446,27 +504,56 @@ selfprof_thread(void *arg)
+@@ -442,27 +500,56 @@ selfprof_thread(void *arg)
        t_last = t;
        unsigned head = p_atomic_read(&selfprof_head);
        unsigned count = MIN2(head - last, SELFPROF_RING);
@@ -1268,10 +1268,10 @@ index 85c1df3..db859ad 100644
           for (unsigned i = 1; i < nb; i++)
              if (b[i].n > b[best].n)
 diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
-index 52d2744..97b4dde 100644
+index 9d2a6cbeae3..5ce59a22458 100644
 --- a/src/panfrost/vulkan/panvk_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_physical_device.c
-@@ -898,6 +898,98 @@ kbase_cpu_sync_wait_many_impl(struct vk_device *device, uint32_t wait_count,
+@@ -941,6 +941,98 @@ kbase_cpu_sync_wait_many_impl(struct vk_device *device, uint32_t wait_count,
                                enum vk_sync_wait_flags wait_flags,
                                uint64_t abs_timeout_ns);
  
@@ -1370,7 +1370,7 @@ index 52d2744..97b4dde 100644
  /* Time the CPU spends blocked here (GPU profile, PANVK_GPU_PROF). */
  static VkResult
  kbase_cpu_sync_wait_many(struct vk_device *device,
-@@ -912,6 +1004,13 @@ kbase_cpu_sync_wait_many(struct vk_device *device,
+@@ -955,6 +1047,13 @@ kbase_cpu_sync_wait_many(struct vk_device *device,
     VkResult r = kbase_cpu_sync_wait_many_impl(device, wait_count, waits,
                                                wait_flags, abs_timeout_ns);
     const uint64_t dt = os_time_get_nano() - t0;
@@ -1385,7 +1385,7 @@ index 52d2744..97b4dde 100644
     p_atomic_inc(&panvk_kbase_cpu_wait_count);
     if (dt > panvk_kbase_cpu_wait_max_ns)
 diff --git a/src/panfrost/vulkan/panvk_priv_bo.h b/src/panfrost/vulkan/panvk_priv_bo.h
-index dbf8a6b..6b577a4 100644
+index 620c9be29ef..73d9eb5b83b 100644
 --- a/src/panfrost/vulkan/panvk_priv_bo.h
 +++ b/src/panfrost/vulkan/panvk_priv_bo.h
 @@ -61,7 +61,7 @@ struct panvk_mem_stats {
@@ -1398,7 +1398,7 @@ index dbf8a6b..6b577a4 100644
  
  extern struct panvk_mem_stats panvk_mem_stats;
 diff --git a/src/panfrost/vulkan/panvk_v7_knobs.h b/src/panfrost/vulkan/panvk_v7_knobs.h
-index d09671a..c957045 100644
+index d09671aab7b..c9570452532 100644
 --- a/src/panfrost/vulkan/panvk_v7_knobs.h
 +++ b/src/panfrost/vulkan/panvk_v7_knobs.h
 @@ -93,6 +93,33 @@ panvk_v7_knob_on(const char *name, int *cache)
@@ -1454,10 +1454,10 @@ index d09671a..c957045 100644
  
  /* jm-v7 106: per-batch budget (MiB) of v6/v7 tessellation memory that is
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-index 0131ade..93a5e43 100644
+index 3ede59e0831..2fe004528c6 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
-@@ -1193,7 +1193,14 @@ panvk_per_arch(CmdBindIndexBuffer2)(VkCommandBuffer commandBuffer,
+@@ -1216,7 +1216,14 @@ panvk_per_arch(CmdBindIndexBuffer2)(VkCommandBuffer commandBuffer,
        cmdbuf->state.gfx.ib.size = panvk_buffer_range(buf, offset, size);
        assert(cmdbuf->state.gfx.ib.size <= UINT32_MAX);
        cmdbuf->state.gfx.ib.dev_addr = panvk_buffer_gpu_ptr(buf, offset);
@@ -1473,7 +1473,7 @@ index 0131ade..93a5e43 100644
        /* In case of NullDescriptors, we need to set a non-NULL address and rely
         * on out-of-bounds behavior against the zero size of the buffer. Note
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_push_constant.c b/src/panfrost/vulkan/panvk_vX_cmd_push_constant.c
-index 0e8eebd..5e1348e 100644
+index 0e8eebd8373..5e1348e9742 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_push_constant.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_push_constant.c
 @@ -5,13 +5,47 @@
@@ -1579,7 +1579,7 @@ index 0e8eebd..5e1348e 100644
  #endif
  
 diff --git a/src/panfrost/vulkan/panvk_vX_descriptor_set.c b/src/panfrost/vulkan/panvk_vX_descriptor_set.c
-index daacc38..ff0922e 100644
+index ea58e1d1fc1..61a608781e7 100644
 --- a/src/panfrost/vulkan/panvk_vX_descriptor_set.c
 +++ b/src/panfrost/vulkan/panvk_vX_descriptor_set.c
 @@ -298,11 +298,15 @@ write_dynamic_buffer_desc(struct panvk_descriptor_set *set,
@@ -1608,10 +1608,10 @@ index daacc38..ff0922e 100644
  
  static void
 diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
-index 5b4e050..ccc0854 100644
+index 81a62d2e443..23fb8c0edd9 100644
 --- a/src/panfrost/vulkan/panvk_vX_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_device.c
-@@ -953,7 +953,9 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+@@ -1046,7 +1046,9 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
      * the life of the device. PANVK_V7_SPLIT_HEAP=0 = one BO (old).
      */
     const bool split_heap = panvk_v7_split_heap();
@@ -1623,7 +1623,7 @@ index 5b4e050..ccc0854 100644
     /* jm-v7 117: on Valhall JM the MALLOC_VERTEX jobs take every vertex
      * packet (position + varyings) of a batch from the tiler heap, next to
 diff --git a/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c b/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
-index 635b415..b5424a3 100644
+index 6a1761942a9..38f1411309b 100644
 --- a/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
 +++ b/src/panfrost/vulkan/panvk_vX_nir_lower_descriptors.c
 @@ -66,6 +66,13 @@ struct lower_desc_ctx {
@@ -1640,7 +1640,7 @@ index 635b415..b5424a3 100644
  #endif
  };
  
-@@ -1804,6 +1811,69 @@ collect_tex_desc_access(nir_builder *b, nir_tex_instr *tex,
+@@ -1832,6 +1839,69 @@ collect_tex_desc_access(nir_builder *b, nir_tex_instr *tex,
  #if PAN_ARCH < 9
  /* Texture/sampler accesses to bindless bindings switch the whole shader's
   * texture/sampler table to direct indexing (jm-v7 050). */
@@ -1710,7 +1710,7 @@ index 635b415..b5424a3 100644
  static bool
  scan_direct_tex_access(nir_builder *b, nir_instr *instr, void *data)
  {
-@@ -1814,13 +1884,16 @@ scan_direct_tex_access(nir_builder *b, nir_instr *instr, void *data)
+@@ -1842,13 +1912,16 @@ scan_direct_tex_access(nir_builder *b, nir_instr *instr, void *data)
  
     nir_tex_instr *tex = nir_instr_as_tex(instr);
     int idx = nir_tex_instr_src_index(tex, nir_tex_src_texture_deref);
@@ -1732,7 +1732,7 @@ index 635b415..b5424a3 100644
  
     return false;
  }
-@@ -1958,6 +2031,8 @@ panvk_per_arch(nir_lower_descriptors)(
+@@ -1989,6 +2062,8 @@ panvk_per_arch(nir_lower_descriptors)(
  #if PAN_ARCH < 9
     nir_shader_instructions_pass(nir, scan_direct_tex_access, nir_metadata_all,
                                  &ctx);
@@ -1742,10 +1742,10 @@ index 635b415..b5424a3 100644
  #endif
  
 diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulkan/panvk_vX_physical_device.c
-index cb1ce4f..52b0bff 100644
+index a4b7c434922..3a1becbc848 100644
 --- a/src/panfrost/vulkan/panvk_vX_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
-@@ -213,7 +213,9 @@ panvk_per_arch(get_physical_device_extensions)(
+@@ -216,7 +216,9 @@ panvk_per_arch(get_physical_device_extensions)(
        .EXT_primitives_generated_query = PAN_ARCH >= 9,
        .EXT_provoking_vertex = true,
        .EXT_queue_family_foreign = true,
@@ -1756,7 +1756,7 @@ index cb1ce4f..52b0bff 100644
        .EXT_rgba10x6_formats = PAN_ARCH >= 11,
        .EXT_robustness2 = true,
        .EXT_sampler_filter_minmax = PAN_ARCH >= 10,
-@@ -258,7 +260,7 @@ panvk_per_arch(get_physical_device_extensions)(
+@@ -264,7 +266,7 @@ panvk_per_arch(get_physical_device_extensions)(
        .ARM_shader_core_builtins = true,
        .ARM_shader_core_properties = true,
        .ARM_scheduling_controls = true,
@@ -1765,7 +1765,7 @@ index cb1ce4f..52b0bff 100644
     };
  }
  
-@@ -843,9 +845,9 @@ panvk_per_arch(get_physical_device_features)(
+@@ -862,9 +864,9 @@ panvk_per_arch(get_physical_device_features)(
  #endif
  
        /* VK_EXT_rasterization_order_attachment_access */
@@ -1776,13 +1776,13 @@ index cb1ce4f..52b0bff 100644
 +      .rasterizationOrderDepthAttachmentAccess = PAN_ARCH != 9,
 +      .rasterizationOrderStencilAttachmentAccess = PAN_ARCH != 9,
        .multiDraw = PAN_ARCH >= 10,
-    };
- }
+ 
+       /* VK_ANDROID_external_format_resolve */
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index 042da8c..a7a80fc 100644
+index 25d08b58414..871ffcb7ce6 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -3162,11 +3162,12 @@ panvk_hash_state(struct vk_physical_device *device,
+@@ -3145,11 +3145,12 @@ panvk_hash_state(struct vk_physical_device *device,
      * setting. The tag versions the knob set.
      */
     const int32_t v7_knobs[] = {
@@ -1796,7 +1796,7 @@ index 042da8c..a7a80fc 100644
     };
     _mesa_blake3_update(&blake3_ctx, v7_knobs, sizeof(v7_knobs));
  #endif
-@@ -4148,6 +4149,23 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -4135,6 +4136,23 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
     input.fau.reserved = shader->fau.total_count * 2;
     input.fau.promote_immediates = true;
  
@@ -1820,7 +1820,7 @@ index 042da8c..a7a80fc 100644
     struct util_dynarray binary = UTIL_DYNARRAY_INIT;
     const int64_t compile_start = os_time_get_nano();
     pan_shader_compile(nir, &input, &binary, &shader->info);
-@@ -4197,6 +4215,21 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -4184,6 +4202,21 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
      * ones. */
     shader->fau.total_count = DIV_ROUND_UP(shader->info.fau.count, 2);
  

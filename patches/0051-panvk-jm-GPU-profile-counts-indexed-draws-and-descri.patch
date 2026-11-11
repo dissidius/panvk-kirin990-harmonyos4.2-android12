@@ -1,7 +1,7 @@
-From e19d64a3fca5e2859f5129c341b410db0778be2e Mon Sep 17 00:00:00 2001
+From e02ee26dab518a88e4253ff48068855262d7dc61 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 20:46:03 +0300
-Subject: [PATCH 51/54] panvk/jm: GPU profile counts indexed draws and
+Subject: [PATCH 51/69] panvk/jm: GPU profile counts indexed draws and
  describes the render pass
 
 Batch kinds only counted non-indexed draws and their framebuffer, so a
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  3 files changed, 38 insertions(+), 3 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index 2401b4c..5b80c1d 100644
+index 2e9537d63dd..9d128fac482 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -110,6 +110,9 @@ struct panvk_batch {
@@ -31,7 +31,7 @@ index 2401b4c..5b80c1d 100644
  };
  
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 1c914af..10b0356 100644
+index d54f3a942fb..34a763892c9 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3319,6 +3319,8 @@ panvk_cmd_draw_indirect(struct panvk_cmd_buffer *cmdbuf,
@@ -77,7 +77,7 @@ index 1c914af..10b0356 100644
  
  VKAPI_ATTR void VKAPI_CALL
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 8757c38..d5715ef 100644
+index 8757c38b72a..d5715ef748c 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -223,7 +223,7 @@ panvk_diag_atom_failed(unsigned atom)

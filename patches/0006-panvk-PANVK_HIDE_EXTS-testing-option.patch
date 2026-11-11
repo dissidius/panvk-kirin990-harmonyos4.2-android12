@@ -1,17 +1,17 @@
-From cadcb6466ce0a023d3492ee7c39f73911a3db058 Mon Sep 17 00:00:00 2001
+From 5e264ece6ca8d50459bab0b2d1118fe4a9d3b472 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 05:35:16 +0300
-Subject: [PATCH] panvk: PANVK_HIDE_EXTS testing option
+Subject: [PATCH 06/69] panvk: PANVK_HIDE_EXTS testing option
 
 ---
  src/panfrost/vulkan/panvk_physical_device.c | 23 +++++++++++++++++++++
  1 file changed, 23 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
-index 02d5b67..e358977 100644
+index 3fb5cee50b4..011ad4fc867 100644
 --- a/src/panfrost/vulkan/panvk_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_physical_device.c
-@@ -1382,6 +1382,28 @@ fail:
+@@ -1434,6 +1434,28 @@ fail:
  }
  
  #if defined(HAVE_PAN_KMOD_KBASE)
@@ -40,7 +40,7 @@ index 02d5b67..e358977 100644
  VkResult
  panvk_physical_device_init_kbase(struct panvk_physical_device *device,
                                   struct panvk_instance *instance,
-@@ -1491,6 +1513,7 @@ panvk_physical_device_init_kbase(struct panvk_physical_device *device,
+@@ -1543,6 +1565,7 @@ panvk_physical_device_init_kbase(struct panvk_physical_device *device,
     struct vk_device_extension_table supported_extensions;
     panvk_arch_dispatch(arch, get_physical_device_extensions, device, instance,
                         &supported_extensions);

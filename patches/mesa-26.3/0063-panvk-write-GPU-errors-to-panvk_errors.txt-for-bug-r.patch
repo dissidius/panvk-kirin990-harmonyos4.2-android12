@@ -1,0 +1,258 @@
+From 253f707ecd3b63445822700640a97d1bcb735a3c Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Thu, 5 Nov 2026 20:17:09 +0300
+Subject: [PATCH] panvk: write GPU errors to panvk_errors.txt for bug reports
+
+GPU faults were only in logcat, which users of Winlator, Eden or ARMSX2
+can't reach. The driver now appends them to
+/sdcard/Download/panvk_errors.txt (else the app's own
+/sdcard/Android/data/<package>/files/), restarted past 1 MiB: a header
+per process (date, program, full driver version), the first 32 failed
+GPU jobs of the process with the kernel's event code
+(kbase_kmod_atom_fail_event), and the history of the jobs before the
+first failure. The history is now kept without PANVK_GPU_PROF too (one
+line per job; PANVK_DIAG_HIST=0 turns that off), and the failure
+handler is installed when the queue is created, so the synchronous
+warm-up submissions are covered. PANVK_ERRORS_FILE=0 turns the file
+off. tools/panvk-report in the release repository collects it.
+
+Checked with a compute shader that never ends: the kernel stops it
+(event 0x4) and the file names it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/lib/kmod/kbase_kmod.c            |  2 +
+ src/panfrost/lib/kmod/kbase_kmod.h            |  2 +
+ src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c   | 42 ++++++++--
+ src/panfrost/vulkan/panvk_instance.c          | 80 +++++++++++++++++++
+ .../vulkan/panvk_vX_physical_device.c         |  6 ++
+ 5 files changed, 126 insertions(+), 6 deletions(-)
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 49e1810..e7a3e7b 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -2314,6 +2314,7 @@ kbase_diag_untrack(const void *bo)
+ }
+ 
+ void (*kbase_kmod_atom_fail_cb)(unsigned atom);
++uint32_t kbase_kmod_atom_fail_event;
+ void (*kbase_kmod_atom_done_cb)(unsigned atom);
+ 
+ void
+@@ -3289,6 +3290,7 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
+          if (errored) {
+             mesa_loge("kbase: JM atom %u failed: event=0x%x core_req=0x%x",
+                       num, ev->event_code, s->core_req);
++            kbase_kmod_atom_fail_event = ev->event_code;
+             if (kbase_kmod_atom_fail_cb)
+                kbase_kmod_atom_fail_cb(num);
+          }
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
+index ce64955..96acea5 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.h
++++ b/src/panfrost/lib/kmod/kbase_kmod.h
+@@ -163,6 +163,8 @@ int kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
+ void kbase_kmod_diag_sample_imports(const char *why);
+ extern void (*kbase_kmod_atom_fail_cb)(unsigned atom);
+ extern void (*kbase_kmod_atom_done_cb)(unsigned atom);
++/* Event code of the failure kbase_kmod_atom_fail_cb is reporting. */
++extern uint32_t kbase_kmod_atom_fail_event;
+ 
+ int kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
+                                       const uint64_t *addrs,
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+index eac8a43..08ae00b 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
+@@ -185,28 +185,44 @@ panvk_diag_hist_done(unsigned atom)
+    simple_mtx_unlock(&panvk_diag_hist_lock);
+ }
+ 
++extern void panvk_errlog(const char *fmt, ...) PRINTFLIKE(1, 2);
++
+ static void
+ panvk_diag_atom_failed(unsigned atom)
+ {
+-   mesa_loge("panvk: failed atom %u ran: %s", atom,
+-             panvk_diag_atoms[atom & 255][0] ? panvk_diag_atoms[atom & 255]
+-                                             : "(unknown)");
++   const char *what = panvk_diag_atoms[atom & 255][0]
++                         ? panvk_diag_atoms[atom & 255]
++                         : "(unknown)";
++   mesa_loge("panvk: failed atom %u ran: %s", atom, what);
++   /* panvk_errors.txt: the first 32 failures of the process (a lost
++    * context fails every queued job after the first one). */
++   static unsigned errlogged;
++   if (p_atomic_inc_return(&errlogged) <= 32)
++      panvk_errlog("GPU job failed: event 0x%x, atom %u: %s",
++                   kbase_kmod_atom_fail_event, atom, what);
+    simple_mtx_lock(&panvk_diag_hist_lock);
+    if (!panvk_diag_hist_dumped && panvk_diag_hist_n) {
+       panvk_diag_hist_dumped = true;
+       const uint64_t now = os_time_get_nano();
+       const unsigned n = MIN2(panvk_diag_hist_n, 128);
+       mesa_loge("panvk: last %u atoms before the failure (ms before now):", n);
++      panvk_errlog("last %u jobs before the failure (ms before now):", n);
+       for (unsigned i = n; i-- > 0;) {
+          const struct panvk_diag_hist *h =
+             &panvk_diag_hist[(panvk_diag_hist_n - 1 - i) & 127];
+-         if (h->done_ns)
++         if (h->done_ns) {
+             mesa_loge("HIST atom %3u sub -%.1f done -%.1f (%.1f ms) %s", h->atom,
+                       (now - h->submit_ns) / 1e6, (now - h->done_ns) / 1e6,
+                       (h->done_ns - h->submit_ns) / 1e6, h->desc);
+-         else
++            panvk_errlog("  atom %3u sub -%.1f done -%.1f (%.1f ms) %s", h->atom,
++                         (now - h->submit_ns) / 1e6, (now - h->done_ns) / 1e6,
++                         (h->done_ns - h->submit_ns) / 1e6, h->desc);
++         } else {
+             mesa_loge("HIST atom %3u sub -%.1f NOT DONE %s", h->atom,
+                       (now - h->submit_ns) / 1e6, h->desc);
++            panvk_errlog("  atom %3u sub -%.1f NOT DONE %s", h->atom,
++                         (now - h->submit_ns) / 1e6, h->desc);
++         }
+       }
+    }
+    simple_mtx_unlock(&panvk_diag_hist_lock);
+@@ -504,7 +520,17 @@ panvk_diag_note_atom(uint64_t atom, const char *kind,
+    if (panvk_gprof_on())
+       panvk_gprof_submit(atom, kind, batch);
+    kbase_kmod_atom_fail_cb = panvk_diag_atom_failed;
+-   if (panvk_gprof_on()) {
++   /* The job history is kept without the profiler too: it goes to
++    * panvk_errors.txt when a job fails (PANVK_DIAG_HIST=0: only with
++    * PANVK_GPU_PROF). One line per job. */
++   static int hist_on = -1;
++   if (hist_on < 0) {
++      const char *e = getenv("PANVK_DIAG_HIST");
++      hist_on = !(e && e[0] == '0');
++   }
++   if (!panvk_gprof_on() && hist_on)
++      kbase_kmod_atom_done_cb = panvk_diag_hist_done;
++   if (panvk_gprof_on() || hist_on) {
+       simple_mtx_lock(&panvk_diag_hist_lock);
+       struct panvk_diag_hist *h = &panvk_diag_hist[panvk_diag_hist_n++ & 127];
+       h->submit_ns = os_time_get_nano();
+@@ -1020,6 +1046,10 @@ panvk_per_arch(create_gpu_queue)(struct panvk_device *device,
+    if (result != VK_SUCCESS)
+       goto err_free_queue;
+ 
++   /* Failed jobs are reported (logcat, panvk_errors.txt) from the first
++    * submission on, the synchronous warm-up ones included. */
++   kbase_kmod_atom_fail_cb = panvk_diag_atom_failed;
++
+    /* Start signaled: with nothing submitted yet, the queue is trivially idle. */
+    result = vk_sync_create(&device->vk, &phys_dev->drm_syncobj_type, 0, 1,
+                            &queue->sync);
+diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
+index 3f0c1a0..6cb68e7 100644
+--- a/src/panfrost/vulkan/panvk_instance.c
++++ b/src/panfrost/vulkan/panvk_instance.c
+@@ -309,6 +309,86 @@ panvk_env_fopen(const char *path)
+    return f;
+ }
+ 
++/* panvk_errors.txt: GPU job failures, the job history before them and
++ * device loss, for bug reports from apps whose logcat users can't reach
++ * (tools/panvk-report collects it in Winlator). Appended to
++ * /sdcard/Download/panvk_errors.txt, else the app's own
++ * /sdcard/Android/data/<package>/files/; restarted past 1 MiB. Each
++ * process writes a header first. PANVK_ERRORS_FILE=0 turns it off.
++ */
++#include <stdarg.h>
++#include <sys/stat.h>
++#include <time.h>
++#include "util/simple_mtx.h"
++#include "util/u_process.h"
++
++/* Set by the physical device to the full driver name and release. */
++const char *panvk_errlog_driver_name = "PanVK-kbase";
++
++static int panvk_errlog_fd = -2;
++static simple_mtx_t panvk_errlog_lock = SIMPLE_MTX_INITIALIZER;
++
++static int
++panvk_errlog_open(void)
++{
++   const char *e = getenv("PANVK_ERRORS_FILE");
++   if (e && e[0] == '0')
++      return -1;
++   int fd = open("/sdcard/Download/panvk_errors.txt",
++                 O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
++   if (fd < 0) {
++      char pkg[128] = "", path[256];
++      FILE *c = panvk_env_fopen("/proc/self/cmdline");
++      if (c) {
++         if (!fgets(pkg, sizeof(pkg), c))
++            pkg[0] = 0;
++         fclose(c);
++      }
++      pkg[strcspn(pkg, ":")] = 0;
++      if (pkg[0]) {
++         snprintf(path, sizeof(path),
++                  "/sdcard/Android/data/%s/files/panvk_errors.txt", pkg);
++         fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
++      }
++   }
++   if (fd < 0)
++      return -1;
++   struct stat st;
++   if (!fstat(fd, &st) && st.st_size > (1 << 20))
++      (void)ftruncate(fd, 0);
++   time_t t = time(NULL);
++   struct tm tm;
++   char when[32] = "?";
++   if (localtime_r(&t, &tm))
++      strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &tm);
++   const char *name = util_get_process_name();
++   dprintf(fd, "==== %s pid %d %s, driver %s\n", when, (int)getpid(),
++           name ? name : "?", panvk_errlog_driver_name);
++   return fd;
++}
++
++void panvk_errlog(const char *fmt, ...) PRINTFLIKE(1, 2);
++void
++panvk_errlog(const char *fmt, ...)
++{
++   simple_mtx_lock(&panvk_errlog_lock);
++   if (panvk_errlog_fd == -2)
++      panvk_errlog_fd = panvk_errlog_open();
++   if (panvk_errlog_fd >= 0) {
++      char line[512];
++      va_list ap;
++      va_start(ap, fmt);
++      int n = vsnprintf(line, sizeof(line) - 1, fmt, ap);
++      va_end(ap);
++      if (n > 0) {
++         n = MIN2(n, (int)sizeof(line) - 2);
++         line[n++] = '\n';
++         (void)!write(panvk_errlog_fd, line, n);
++      }
++   }
++   simple_mtx_unlock(&panvk_errlog_lock);
++}
++
+ static void __attribute__((constructor))
+ panvk_load_env_file(void)
+ {
+diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulkan/panvk_vX_physical_device.c
+index 52b0bff..264f20f 100644
+--- a/src/panfrost/vulkan/panvk_vX_physical_device.c
++++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
+@@ -1461,6 +1461,12 @@ panvk_per_arch(get_physical_device_properties)(
+    snprintf(properties->driverInfo, VK_MAX_DRIVER_INFO_SIZE,
+             "PanVK-kbase " PANVK_KBASE_RELEASE " (Mesa " PACKAGE_VERSION
+             MESA_GIT_SHA1 ")");
++   {
++      /* Named in panvk_errors.txt headers (panvk_instance.c). */
++      extern const char *panvk_errlog_driver_name;
++      panvk_errlog_driver_name = "PanVK-kbase " PANVK_KBASE_RELEASE
++                                 " (Mesa " PACKAGE_VERSION MESA_GIT_SHA1 ")";
++   }
+ 
+    /* VK_EXT_physical_device_drm */
+    if (device->drm.primary_rdev) {
+-- 
+2.43.0
+

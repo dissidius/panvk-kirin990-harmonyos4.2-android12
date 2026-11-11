@@ -1,7 +1,7 @@
-From 807d84d6936962d635000edd42a1666123cfc010 Mon Sep 17 00:00:00 2001
+From 5e965aa8c8ff8e381625bea09474040a0145fad6 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 12:54:37 +0300
-Subject: [PATCH] panvk/jm: per-batch GPU time profiler (PANVK_GPU_PROF)
+Subject: [PATCH 13/69] panvk/jm: per-batch GPU time profiler (PANVK_GPU_PROF)
 
 ---
  src/panfrost/lib/kmod/kbase_kmod.c          |   3 +
@@ -10,10 +10,10 @@ Subject: [PATCH] panvk/jm: per-batch GPU time profiler (PANVK_GPU_PROF)
  3 files changed, 116 insertions(+)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 917d39e..117a537 100644
+index 1db0789fac1..77f42abcf04 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2314,6 +2314,7 @@ kbase_diag_untrack(const void *bo)
+@@ -2312,6 +2312,7 @@ kbase_diag_untrack(const void *bo)
  }
  
  void (*kbase_kmod_atom_fail_cb)(unsigned atom);
@@ -21,7 +21,7 @@ index 917d39e..117a537 100644
  
  void
  kbase_kmod_diag_sample_imports(const char *why)
-@@ -3242,6 +3243,8 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
+@@ -3240,6 +3241,8 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
                                   const struct base_jd_event_v2 *ev)
  {
     unsigned num = ev->atom_number;
@@ -31,7 +31,7 @@ index 917d39e..117a537 100644
     kd->last_event_code[num] = ev->event_code;
     kd->atom_failed[num] = errored;
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
-index 43559e9..fdab8e9 100644
+index 43559e906dd..fdab8e9a64b 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.h
 +++ b/src/panfrost/lib/kmod/kbase_kmod.h
 @@ -153,6 +153,7 @@ int kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
@@ -43,7 +43,7 @@ index 43559e9..fdab8e9 100644
  int kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
                                        const uint64_t *addrs,
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 23760b3..78b84aa 100644
+index 23760b33c9b..78b84aaddb2 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -27,6 +27,7 @@

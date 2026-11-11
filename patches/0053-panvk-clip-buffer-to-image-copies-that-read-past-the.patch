@@ -1,7 +1,7 @@
-From 0c5e706805382705e710fb4e3ffb7116e1f4a8c9 Mon Sep 17 00:00:00 2001
+From 04efcbd487616db8f4a1bdac42cd98e9189ca2ca Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 22:56:13 +0300
-Subject: [PATCH 53/54] panvk: clip buffer-to-image copies that read past their
+Subject: [PATCH 53/69] panvk: clip buffer-to-image copies that read past their
  source
 
 The meta copy shader reads the source without bounds. DXVK 2.7 uploads
@@ -21,7 +21,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 161 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_cmd_meta.c b/src/panfrost/vulkan/panvk_vX_cmd_meta.c
-index abc441d..95f84a6 100644
+index 14b7f0b5001..7460cedfea4 100644
 --- a/src/panfrost/vulkan/panvk_vX_cmd_meta.c
 +++ b/src/panfrost/vulkan/panvk_vX_cmd_meta.c
 @@ -1896,10 +1896,171 @@ panvk_per_arch(CmdCopyMemoryToImageKHR)(

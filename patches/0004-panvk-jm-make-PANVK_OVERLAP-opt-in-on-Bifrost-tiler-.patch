@@ -1,8 +1,8 @@
-From 01a05132c18c10186fbf9d048abd0f7f89b8b6fe Mon Sep 17 00:00:00 2001
+From cd5fe1e8734ff97bc3ca8b3640bf277e4795a552 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 04:25:21 +0300
-Subject: [PATCH] panvk/jm: make PANVK_OVERLAP opt-in on Bifrost (tiler OOM on
- G76)
+Subject: [PATCH 04/69] panvk/jm: make PANVK_OVERLAP opt-in on Bifrost (tiler
+ OOM on G76)
 
 ---
  src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c |  4 +++-
@@ -11,10 +11,10 @@ Subject: [PATCH] panvk/jm: make PANVK_OVERLAP opt-in on Bifrost (tiler OOM on
  3 files changed, 19 insertions(+), 5 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index f239d45..dc87af1 100644
+index 4d05b344415..3ff5793e3a8 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-@@ -380,7 +380,9 @@ panvk_overlap_enabled(void)
+@@ -381,7 +381,9 @@ panvk_overlap_enabled(void)
     static int on = -1;
     if (on < 0) {
        const char *e = getenv("PANVK_OVERLAP");
@@ -26,7 +26,7 @@ index f239d45..dc87af1 100644
     return on;
  }
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 910301a..cb0d856 100644
+index 910301a208c..cb0d8562252 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -69,7 +69,9 @@ panvk_overlap_enabled(void)
@@ -41,7 +41,7 @@ index 910301a..cb0d856 100644
     return on;
  }
 diff --git a/src/panfrost/vulkan/panvk_v7_knobs.h b/src/panfrost/vulkan/panvk_v7_knobs.h
-index 15bdb7a..d09671a 100644
+index 15bdb7a3fe8..d09671aab7b 100644
 --- a/src/panfrost/vulkan/panvk_v7_knobs.h
 +++ b/src/panfrost/vulkan/panvk_v7_knobs.h
 @@ -73,6 +73,16 @@ panvk_v7_knob_texel_width(void)

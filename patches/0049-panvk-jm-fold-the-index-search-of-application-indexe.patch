@@ -1,7 +1,7 @@
-From 7c12f0b0fb49149399c1d85d9458890c88aa89b9 Mon Sep 17 00:00:00 2001
+From 955ebf125c88c0f2db33f703952767f63e8e3459 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 19:31:00 +0300
-Subject: [PATCH 49/54] panvk/jm: fold the index search of application indexed
+Subject: [PATCH 49/69] panvk/jm: fold the index search of application indexed
  indirect draws
 
 An indexed indirect draw's count is only known on the GPU, so it got a
@@ -24,7 +24,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 19 insertions(+), 3 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 523a226..be36e86 100644
+index 7eefd7e68c9..9f9ef23d6c1 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3397,9 +3397,25 @@ panvk_cmd_draw_indirect(struct panvk_cmd_buffer *cmdbuf,

@@ -1,7 +1,7 @@
-From f29ee6a3fc30babd2efd169cb3c67828caffb9bb Mon Sep 17 00:00:00 2001
+From 14649548621d321a2cda0af5e817d01a5fefa314 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Sat, 31 Oct 2026 12:06:17 +0300
-Subject: [PATCH 55/56] pan/bi: let drivers push their own UBOs without the
+Subject: [PATCH 55/69] pan/bi: let drivers push their own UBOs without the
  blend constants
 
 bi_opt_push_ubo() always pushed the gallium sysval UBO's blend constants
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  2 files changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/compiler/bifrost/bi_opt_push_ubo.c b/src/panfrost/compiler/bifrost/bi_opt_push_ubo.c
-index 35d15f2..70040f4 100644
+index 35d15f234d6..70040f414aa 100644
 --- a/src/panfrost/compiler/bifrost/bi_opt_push_ubo.c
 +++ b/src/panfrost/compiler/bifrost/bi_opt_push_ubo.c
 @@ -153,7 +153,8 @@ bi_opt_push_ubo(bi_context *ctx)
@@ -31,10 +31,10 @@ index 35d15f2..70040f4 100644
  
     ctx->ubo_reloc.start = fau->count;
 diff --git a/src/panfrost/compiler/pan_compiler.h b/src/panfrost/compiler/pan_compiler.h
-index b71fac1..a6d5486 100644
+index 109bd5928f1..9ed9cca626c 100644
 --- a/src/panfrost/compiler/pan_compiler.h
 +++ b/src/panfrost/compiler/pan_compiler.h
-@@ -63,6 +63,9 @@ struct pan_compile_inputs {
+@@ -64,6 +64,9 @@ struct pan_compile_inputs {
        uint32_t pushable_ubos;
        /* Whether the backend may promote immediates into the FAU */
        bool promote_immediates;

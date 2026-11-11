@@ -1,7 +1,7 @@
-From 1faec1c51f7b1ae1d5a9c52269d596634ba98150 Mon Sep 17 00:00:00 2001
+From d7ba145d8f32ff0f27c059eca8e38894c6587212 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 13:09:10 +0300
-Subject: [PATCH] panvk/kbase: measure sync-file export waits;
+Subject: [PATCH 15/69] panvk/kbase: measure sync-file export waits;
  PANVK_JM_EXPORT_NOWAIT A/B
 
 ---
@@ -10,7 +10,7 @@ Subject: [PATCH] panvk/kbase: measure sync-file export waits;
  2 files changed, 26 insertions(+), 2 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index ee01443..9465b29 100644
+index ee0144340bc..9465b29f44c 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -205,8 +205,13 @@ panvk_gprof_report_locked(uint64_t now)
@@ -30,10 +30,10 @@ index ee01443..9465b29 100644
        int best = -1;
        for (unsigned i = 0; i < panvk_gprof_nkinds; i++)
 diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
-index e358977..b5c36a6 100644
+index 011ad4fc867..3170d6d869d 100644
 --- a/src/panfrost/vulkan/panvk_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_physical_device.c
-@@ -1119,6 +1119,9 @@ out:
+@@ -1162,6 +1162,9 @@ out:
     return VK_SUCCESS;
  }
  
@@ -43,7 +43,7 @@ index e358977..b5c36a6 100644
  /* JM has no CQS fence export: wait for the payload on the CPU and hand out
   * -1, which the Vulkan spec allows for an already-signaled SYNC_FD.  Without
   * any export_sync_file the runtime drops SYNC_FD semaphores entirely, which
-@@ -1142,8 +1145,24 @@ kbase_cpu_sync_export_sync_file_jm(struct vk_device *device,
+@@ -1185,8 +1188,24 @@ kbase_cpu_sync_export_sync_file_jm(struct vk_device *device,
     }
     mtx_unlock(&ks->mutex);
  

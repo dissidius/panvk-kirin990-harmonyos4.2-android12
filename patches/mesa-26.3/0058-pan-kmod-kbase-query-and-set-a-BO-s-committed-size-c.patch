@@ -1,0 +1,111 @@
+From 4832ed03d4894793552c628a6e59ea9d270ff602 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Wed, 4 Nov 2026 00:15:55 +0300
+Subject: [PATCH 58/60] pan/kmod/kbase: query and set a BO's committed size,
+ count atoms in flight
+
+kbase_kmod_bo_committed_bytes() (KBASE_IOCTL_MEM_QUERY) returns the
+physical memory a growable (GROW_ON_GPF) BO holds, which the reserved
+size does not show. kbase_kmod_bo_set_committed_bytes()
+(KBASE_IOCTL_MEM_COMMIT) shrinks it; the stock Kirin 990 kernel accepts
+this for GROW_ON_GPF regions and they grow again on the next GPU fault.
+kbase_kmod_atoms_in_flight() reads pending completion events without
+blocking and counts the atoms not completed, without consuming any
+waiter.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/lib/kmod/kbase_kmod.c | 56 ++++++++++++++++++++++++++++++
+ src/panfrost/lib/kmod/kbase_kmod.h |  9 +++++
+ 2 files changed, 65 insertions(+)
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 70f515c..49e1810 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -3636,6 +3636,62 @@ kbase_kmod_jm_clean_imports(struct pan_kmod_dev *dev)
+    simple_mtx_unlock(&kd->nc_lock);
+ }
+ 
++uint64_t
++kbase_kmod_bo_committed_bytes(struct pan_kmod_bo *bo)
++{
++   if (!bo)
++      return 0;
++   struct kbase_kmod_bo *kbo = container_of(bo, struct kbase_kmod_bo, base);
++   union kbase_ioctl_mem_query q = {
++      .in.gpu_addr = kbo->gpu_va,
++      .in.query = KBASE_MEM_QUERY_COMMIT_SIZE,
++   };
++   if (!kbo->gpu_va || ioctl(bo->dev->fd, KBASE_IOCTL_MEM_QUERY, &q))
++      return 0;
++   return q.out.value * kbase_kmod_page_size();
++}
++
++bool
++kbase_kmod_bo_set_committed_bytes(struct pan_kmod_bo *bo, uint64_t bytes)
++{
++   if (!bo)
++      return false;
++   struct kbase_kmod_bo *kbo = container_of(bo, struct kbase_kmod_bo, base);
++   const uint64_t ps = kbase_kmod_page_size();
++   struct kbase_ioctl_mem_commit c = {
++      .gpu_addr = kbo->gpu_va,
++      .pages = DIV_ROUND_UP(bytes, ps),
++   };
++   if (!kbo->gpu_va)
++      return false;
++   if (ioctl(bo->dev->fd, KBASE_IOCTL_MEM_COMMIT, &c)) {
++      static bool logged;
++      if (!logged) {
++         logged = true;
++         mesa_logi("kbase: MEM_COMMIT to %" PRIu64 " pages failed: %s",
++                   (uint64_t)c.pages, strerror(errno));
++      }
++      return false;
++   }
++   return true;
++}
++
++unsigned
++kbase_kmod_atoms_in_flight(struct pan_kmod_dev *dev)
++{
++   struct kbase_kmod_dev *kd = container_of(dev, struct kbase_kmod_dev, base);
++   if (kd->is_csf)
++      return 1;
++   if (kbase_drain_events(kd, 0) < 0)
++      return 1;
++   unsigned n = 0;
++   simple_mtx_lock(&kd->atoms_lock);
++   for (unsigned i = 0; i < KBASE_MAX_ATOMS; i++)
++      n += kd->atoms[i].atom_number && !kd->atoms[i].completed;
++   simple_mtx_unlock(&kd->atoms_lock);
++   return n;
++}
++
+ bool
+ kbase_kmod_wait_atom(struct pan_kmod_dev *dev, uint64_t atom_number,
+                      int64_t timeout_ns)
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
+index fdab8e9..ce64955 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.h
++++ b/src/panfrost/lib/kmod/kbase_kmod.h
+@@ -51,6 +51,15 @@ bool kbase_kmod_job_submit_retry(struct pan_kmod_dev *dev, uint64_t jc,
+                                 uint32_t next_res, int max_attempts);
+ bool kbase_kmod_wait_atom(struct pan_kmod_dev *dev, uint64_t atom_number,
+                          int64_t timeout_ns);
++/* Bytes of physical memory the kernel has committed to a BO (a
++ * GROW_ON_GPF region grows as the GPU touches it), 0 if unknown. */
++uint64_t kbase_kmod_bo_committed_bytes(struct pan_kmod_bo *bo);
++/* Set the physical memory committed to a growable BO (KBASE_IOCTL_MEM_COMMIT).
++ * Shrinking frees the pages past `bytes`: only while no GPU job uses them. */
++bool kbase_kmod_bo_set_committed_bytes(struct pan_kmod_bo *bo, uint64_t bytes);
++/* Atoms submitted and not completed yet, after reading pending completion
++ * events (without blocking and without consuming any waiter). */
++unsigned kbase_kmod_atoms_in_flight(struct pan_kmod_dev *dev);
+ void kbase_kmod_atom_release(struct pan_kmod_dev *dev, uint64_t atom_num);
+ void kbase_kmod_jm_clean_imports(struct pan_kmod_dev *dev);
+ struct pan_kmod_bo *kbase_kmod_bo_import_host(struct pan_kmod_dev *dev,
+-- 
+2.43.0
+

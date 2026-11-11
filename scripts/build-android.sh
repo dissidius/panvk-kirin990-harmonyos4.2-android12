@@ -48,7 +48,7 @@ meson setup "$B" "$WORK/mesa" --cross-file "$WORK/build/android.cross.ini" \
   -Dpanfrost-kmds=kbase -Dmesa-clc=system -Dprecomp-compiler=system \
   -Dxlib-lease=disabled -Degl=disabled -Dgles1=disabled -Dgles2=disabled \
   -Dopengl=false -Dglx=disabled -Dgbm=disabled -Dlibunwind=disabled \
-  -Dzstd=disabled -Dcpp_link_args=-static-libstdc++
+  -Dzstd=disabled -Dpanfrost-rust=false -Dcpp_link_args=-static-libstdc++
 ninja -C "$B"
 mkdir -p "$WORK/dist"
 "$NDK_BIN/llvm-strip" -o "$WORK/dist/libvulkan_panfrost.so" "$B/src/panfrost/vulkan/libvulkan_panfrost.so"

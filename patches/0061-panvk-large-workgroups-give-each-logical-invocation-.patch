@@ -1,7 +1,7 @@
-From d3cd9a8b0f9f735efac012add0cd3a35b1f4b12a Mon Sep 17 00:00:00 2001
+From c517f13ec63eb3d2d3a9aca47c3c8b5fd7436a94 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 4 Nov 2026 01:04:14 +0300
-Subject: [PATCH 61/62] panvk: large workgroups: give each logical invocation
+Subject: [PATCH 61/69] panvk: large workgroups: give each logical invocation
  its own globals
 
 A compute workgroup larger than the core holds is run as K copies per
@@ -24,10 +24,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 8 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index a7a80fc..c3f30cc 100644
+index 871ffcb7ce6..706f4bdc039 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -1199,6 +1199,14 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
+@@ -1171,6 +1171,14 @@ panvk_lower_large_workgroup(nir_shader *nir, unsigned max_hw)
  
     nir_function_impl *impl = nir_shader_get_entrypoint(nir);
     nir_lower_returns_impl(impl);

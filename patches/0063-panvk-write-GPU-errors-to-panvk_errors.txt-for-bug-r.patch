@@ -1,7 +1,8 @@
-From 253f707ecd3b63445822700640a97d1bcb735a3c Mon Sep 17 00:00:00 2001
+From ed0fbd9918bd72ff92ee89de743c9f1d3c049bf1 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 5 Nov 2026 20:17:09 +0300
-Subject: [PATCH] panvk: write GPU errors to panvk_errors.txt for bug reports
+Subject: [PATCH 63/69] panvk: write GPU errors to panvk_errors.txt for bug
+ reports
 
 GPU faults were only in logcat, which users of Winlator, Eden or ARMSX2
 can't reach. The driver now appends them to
@@ -29,10 +30,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  5 files changed, 126 insertions(+), 6 deletions(-)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 49e1810..e7a3e7b 100644
+index 429c7d5d386..3e30fab98ca 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2314,6 +2314,7 @@ kbase_diag_untrack(const void *bo)
+@@ -2312,6 +2312,7 @@ kbase_diag_untrack(const void *bo)
  }
  
  void (*kbase_kmod_atom_fail_cb)(unsigned atom);
@@ -40,7 +41,7 @@ index 49e1810..e7a3e7b 100644
  void (*kbase_kmod_atom_done_cb)(unsigned atom);
  
  void
-@@ -3289,6 +3290,7 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
+@@ -3287,6 +3288,7 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
           if (errored) {
              mesa_loge("kbase: JM atom %u failed: event=0x%x core_req=0x%x",
                        num, ev->event_code, s->core_req);
@@ -49,7 +50,7 @@ index 49e1810..e7a3e7b 100644
                 kbase_kmod_atom_fail_cb(num);
           }
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
-index ce64955..96acea5 100644
+index ce649557f14..96acea5c0ed 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.h
 +++ b/src/panfrost/lib/kmod/kbase_kmod.h
 @@ -163,6 +163,8 @@ int kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
@@ -62,7 +63,7 @@ index ce64955..96acea5 100644
  int kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
                                        const uint64_t *addrs,
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index eac8a43..08ae00b 100644
+index eac8a434555..08ae00b90e0 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -185,28 +185,44 @@ panvk_diag_hist_done(unsigned atom)
@@ -146,10 +147,10 @@ index eac8a43..08ae00b 100644
     result = vk_sync_create(&device->vk, &phys_dev->drm_syncobj_type, 0, 1,
                             &queue->sync);
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index 3f0c1a0..6cb68e7 100644
+index 41e6f02ef6e..0a1b25a8283 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
-@@ -309,6 +309,86 @@ panvk_env_fopen(const char *path)
+@@ -305,6 +305,86 @@ panvk_env_fopen(const char *path)
     return f;
  }
  
@@ -237,10 +238,10 @@ index 3f0c1a0..6cb68e7 100644
  panvk_load_env_file(void)
  {
 diff --git a/src/panfrost/vulkan/panvk_vX_physical_device.c b/src/panfrost/vulkan/panvk_vX_physical_device.c
-index 52b0bff..264f20f 100644
+index 3a1becbc848..9bd0e625639 100644
 --- a/src/panfrost/vulkan/panvk_vX_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_physical_device.c
-@@ -1461,6 +1461,12 @@ panvk_per_arch(get_physical_device_properties)(
+@@ -1501,6 +1501,12 @@ panvk_per_arch(get_physical_device_properties)(
     snprintf(properties->driverInfo, VK_MAX_DRIVER_INFO_SIZE,
              "PanVK-kbase " PANVK_KBASE_RELEASE " (Mesa " PACKAGE_VERSION
              MESA_GIT_SHA1 ")");

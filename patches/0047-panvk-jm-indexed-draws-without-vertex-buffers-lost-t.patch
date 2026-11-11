@@ -1,7 +1,7 @@
-From edd369f6704a00204b8509296939324d5fa8a1b6 Mon Sep 17 00:00:00 2001
+From 8c5b262dcd26422ba6885df1288919efd749b829 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 19:05:35 +0300
-Subject: [PATCH 47/54] panvk/jm: indexed draws without vertex buffers lost
+Subject: [PATCH 47/69] panvk/jm: indexed draws without vertex buffers lost
  their attribute table
 
 Indexed (and indirect) draws allocate helper storage sized by the number
@@ -20,10 +20,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 11 insertions(+), 4 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index d9f3a0e..523a226 100644
+index fed18fa7062..7eefd7e68c9 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-@@ -1151,7 +1151,9 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
+@@ -1150,7 +1150,9 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
           cmdbuf, desc,
           num_vs_attribs * sizeof(struct libpan_draw_helper_attrib_info), 8);
  
@@ -34,7 +34,7 @@ index d9f3a0e..523a226 100644
            (num_vs_attribs && !attribs_infos_storage.gpu))
           return VK_ERROR_OUT_OF_DEVICE_MEMORY;
  
-@@ -1217,16 +1219,19 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
+@@ -1216,16 +1218,19 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
     return VK_SUCCESS;
  }
  

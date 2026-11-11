@@ -1,7 +1,7 @@
-From 1086fc126dc59036e7094cfe48afa10a405939ba Mon Sep 17 00:00:00 2001
+From c48e446f3c8733ba6e2a924af17bf02332b7df2a Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 11:43:33 +0300
-Subject: [PATCH] panvk: compute dispatch diagnostics, env-file overrides
+Subject: [PATCH 11/69] panvk: compute dispatch diagnostics, env-file overrides
 
 ---
  src/panfrost/vulkan/jm/panvk_cmd_buffer.h      | 2 ++
@@ -13,7 +13,7 @@ Subject: [PATCH] panvk: compute dispatch diagnostics, env-file overrides
  6 files changed, 32 insertions(+), 5 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index 6171ae2..88f7ac6 100644
+index 39373603881..42e9d9a085b 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -88,6 +88,8 @@ struct panvk_batch {
@@ -26,7 +26,7 @@ index 6171ae2..88f7ac6 100644
     } diag;
  };
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
-index 85965f0..dd5dd87 100644
+index 85965f01cec..dd5dd876394 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_dispatch.c
 @@ -192,6 +192,15 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
@@ -46,7 +46,7 @@ index 85965f0..dd5dd87 100644
                                                             &wg_count, indirect);
  
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 103185f..23760b3 100644
+index 103185f92d7..23760b33c9b 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -178,11 +178,16 @@ panvk_diag_note_atom(uint64_t atom, const char *kind,
@@ -69,10 +69,10 @@ index 103185f..23760b3 100644
  
  static uint64_t
 diff --git a/src/panfrost/vulkan/panvk_instance.c b/src/panfrost/vulkan/panvk_instance.c
-index d5b5221..0906941 100644
+index 4cda0f18949..92401762059 100644
 --- a/src/panfrost/vulkan/panvk_instance.c
 +++ b/src/panfrost/vulkan/panvk_instance.c
-@@ -307,10 +307,13 @@ panvk_load_env_file(void)
+@@ -303,10 +303,13 @@ panvk_load_env_file(void)
        if (!eq || line[0] == '#')
           continue;
        *eq = 0;
@@ -90,7 +90,7 @@ index d5b5221..0906941 100644
     fclose(f);
  }
 diff --git a/src/panfrost/vulkan/panvk_shader.h b/src/panfrost/vulkan/panvk_shader.h
-index fb89f1b..a775d24 100644
+index fb89f1ba5bf..a775d248912 100644
 --- a/src/panfrost/vulkan/panvk_shader.h
 +++ b/src/panfrost/vulkan/panvk_shader.h
 @@ -461,6 +461,10 @@ struct panvk_shader_desc_info {
@@ -105,10 +105,10 @@ index fb89f1b..a775d24 100644
        struct {
           struct pan_compute_dim local_size;
 diff --git a/src/panfrost/vulkan/panvk_vX_shader.c b/src/panfrost/vulkan/panvk_vX_shader.c
-index f6fece6..1dd4e02 100644
+index bc364324f0a..5497e1a635d 100644
 --- a/src/panfrost/vulkan/panvk_vX_shader.c
 +++ b/src/panfrost/vulkan/panvk_vX_shader.c
-@@ -3497,6 +3497,10 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
+@@ -3485,6 +3485,10 @@ panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
  {
     const bool dump_asm =
        shader_flags & VK_SHADER_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_MESA;

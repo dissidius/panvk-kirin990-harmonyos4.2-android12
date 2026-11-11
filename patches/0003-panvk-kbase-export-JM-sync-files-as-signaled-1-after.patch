@@ -1,18 +1,18 @@
-From 364ab9dda28352cdf37f4b315f858b99487eaeac Mon Sep 17 00:00:00 2001
+From bcc3d36e6f2724adb8e1eeda669c34124eb3a7d7 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 04:06:57 +0300
-Subject: [PATCH] panvk/kbase: export JM sync files as signaled (-1) after a
- CPU wait
+Subject: [PATCH 03/69] panvk/kbase: export JM sync files as signaled (-1)
+ after a CPU wait
 
 ---
  src/panfrost/vulkan/panvk_physical_device.c | 35 ++++++++++++++++++++-
  1 file changed, 34 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/vulkan/panvk_physical_device.c b/src/panfrost/vulkan/panvk_physical_device.c
-index 259242a..b3dfe8a 100644
+index 832e5cbfb1e..edbb7ae0c16 100644
 --- a/src/panfrost/vulkan/panvk_physical_device.c
 +++ b/src/panfrost/vulkan/panvk_physical_device.c
-@@ -1118,6 +1118,38 @@ out:
+@@ -1161,6 +1161,38 @@ out:
     return VK_SUCCESS;
  }
  
@@ -51,7 +51,7 @@ index 259242a..b3dfe8a 100644
  static const struct vk_sync_type kbase_cpu_sync_type = {
     .size      = sizeof(struct kbase_cpu_sync),
     .features  = VK_SYNC_FEATURE_BINARY |
-@@ -1151,7 +1183,8 @@ get_device_sync_types_kbase(struct panvk_physical_device *device,
+@@ -1194,7 +1226,8 @@ get_device_sync_types_kbase(struct panvk_physical_device *device,
  
     device->drm_syncobj_type = kbase_cpu_sync_type;
     if (pan_arch(device->kmod.dev->props.gpu_id) < 10)

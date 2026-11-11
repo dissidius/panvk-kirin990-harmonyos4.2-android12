@@ -1,0 +1,83 @@
+From c602afa79585f60466543efaa675cfd354208a43 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Tue, 10 Nov 2026 23:14:38 +0300
+Subject: [PATCH 69/69] vulkan/android: ask gralloc for linear AHB-backed
+ images by default
+
+Android 16's loader no longer calls vkGetSwapchainGrallocUsage*ANDROID;
+it takes the swapchain's AHardwareBuffer usage from
+vkGetPhysicalDeviceImageFormatProperties2. That path had GPU-only usage,
+so Arm gralloc allocated the swapchain AFBC-compressed while PanVK, which
+cannot read the layout without a stable mapper, wrote linear pixels: on
+a Samsung A51 (Android 16) SurfaceFlinger's GPU took JOB_READ_FAULTs on
+every composition and Winlator's renderer froze.
+
+Add a CPU usage (CPU_WRITE_RARELY, as for VK_IMAGE_COMPRESSION_DISABLED)
+to the AHB usage of colour images unless they are protected, so gralloc
+allocates linear, matching setup_gralloc0_usage().
+MESA_ANDROID_AHB_ALLOW_COMPRESSED=1 restores gralloc's choice.
+
+Tested: Samsung A51, Winlator renderer on PanVK: the SurfaceView buffer
+is uncompressed (HWC COMP_TYPE 0x8000000, was 0x100000) and no GPU
+faults; it was 1,042 faults in the freeze run.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/vulkan/runtime/vk_android.c | 27 +++++++++++++++++++++++++--
+ 1 file changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/src/vulkan/runtime/vk_android.c b/src/vulkan/runtime/vk_android.c
+index bb65e5da53f..a4c96d8defa 100644
+--- a/src/vulkan/runtime/vk_android.c
++++ b/src/vulkan/runtime/vk_android.c
+@@ -981,6 +981,25 @@ vk_image_usage_to_ahb_usage(const VkImageCreateFlags2KHR vk_create,
+    return ahb_usage;
+ }
+ 
++/* Gralloc chooses a compressed layout (Arm AFBC) for GPU-only usage. A
++ * driver that cannot read that layout from the buffer's metadata (PanVK over
++ * kbase: no stable mapper on most vendor ROMs) then writes linear pixels into
++ * an AFBC buffer, and the compositor's GPU faults reading it (Samsung A51,
++ * Android 16, Winlator's renderer). Ask for linear buffers by adding a CPU
++ * usage, as setup_gralloc0_usage() does for the gralloc usage queries that
++ * Android 16's loader no longer makes. MESA_ANDROID_AHB_ALLOW_COMPRESSED=1
++ * lets gralloc pick again. */
++static bool
++vk_android_ahb_force_linear(void)
++{
++   static int allow = -1;
++   if (allow < 0) {
++      const char *v = getenv("MESA_ANDROID_AHB_ALLOW_COMPRESSED");
++      allow = v && v[0] == '1';
++   }
++   return !allow;
++}
++
+ static uint64_t
+ vk_image_info_to_ahb_usage(VkFormat vk_format,
+                            VkImageCreateFlags2KHR vk_create,
+@@ -988,7 +1007,9 @@ vk_image_info_to_ahb_usage(VkFormat vk_format,
+                            const void *image_info_pnext)
+ {
+    uint64_t ahb_usage = vk_image_usage_to_ahb_usage(vk_create, vk_usage);
+-   bool force_linear = false;
++   bool force_linear = vk_android_ahb_force_linear() &&
++                       !(vk_create & VK_IMAGE_CREATE_PROTECTED_BIT) &&
++                       !vk_format_is_depth_or_stencil(vk_format);
+ 
+    /* Optimal tiling can be assumed for mutability only between unorm and srgb
+     * variants. For anything beyond that, force AHB alloc with linear tiling.
+@@ -1119,7 +1140,9 @@ vk_alloc_ahardware_buffer(const VkMemoryAllocateInfo *pAllocateInfo)
+             image->android_deferred_create_info);
+       } else {
+          usage = vk_image_usage_to_ahb_usage(image->create_flags, image->usage);
+-         if ((image->compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT) &&
++         if (((image->compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT) ||
++              (vk_android_ahb_force_linear() &&
++               !(image->create_flags & VK_IMAGE_CREATE_PROTECTED_BIT))) &&
+              !vk_format_is_depth_or_stencil(image->format))
+             usage |= AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY;
+       }
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From 8a6797d6fde97540f620349db6fde0cc8e3a7d04 Mon Sep 17 00:00:00 2001
+From 097a4576d5bd817726437439c76176f69936be35 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Thu, 29 Oct 2026 21:20:43 +0300
-Subject: [PATCH 52/54] panvk/jm: reuse a vertex-pulling VS's image tables
+Subject: [PATCH 52/69] panvk/jm: reuse a vertex-pulling VS's image tables
  across draws
 
 A VS with storage images or texel buffers got a new attribute table and
@@ -23,7 +23,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  3 files changed, 57 insertions(+), 7 deletions(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index 5b80c1d..ed25a97 100644
+index 9d128fac482..ce4388017bb 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -101,6 +101,9 @@ struct panvk_batch {
@@ -37,10 +37,10 @@ index 5b80c1d..ed25a97 100644
     struct {
        uint32_t draws, gs, tess, xfb, fb_w, fb_h;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 10b0356..4c986eb 100644
+index 34a763892c9..e8f0e40b0c8 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-@@ -1086,7 +1086,8 @@ panvk_draw_emit_attrib(const struct panvk_draw_data *draw,
+@@ -1085,7 +1085,8 @@ panvk_draw_emit_attrib(const struct panvk_draw_data *draw,
   */
  static VkResult
  panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
@@ -50,7 +50,7 @@ index 10b0356..4c986eb 100644
  {
     const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
     const struct panvk_shader_variant *vs_variant =
-@@ -1102,6 +1103,31 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
+@@ -1101,6 +1102,31 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                        vs_variant->info.attribute_count);
     unsigned attrib_count = num_vs_attribs + num_imgs;
  
@@ -82,7 +82,7 @@ index 10b0356..4c986eb 100644
     /* jm-v7 097: a direct draw's tables depend only on the vertex input
      * state, the vertex buffers, the VS and the draw's padded vertex count,
      * instancing and raw vertex offset: reuse the previous ones while all of
-@@ -1215,15 +1241,21 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
+@@ -1214,15 +1240,21 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
        cmdbuf->state.gfx.vs.desc.tables[PANVK_BIFROST_DESC_TABLE_IMG] =
           bufs.gpu + (num_vbs * pan_size(ATTRIBUTE_BUFFER) * 2);
     }
@@ -161,10 +161,10 @@ index 10b0356..4c986eb 100644
     if (draw->jobs.frag_copy_desc.gpu) {
        /* We don't need to add frag_copy_desc as a dependency because the
 diff --git a/src/panfrost/vulkan/panvk_cmd_draw.h b/src/panfrost/vulkan/panvk_cmd_draw.h
-index 527a43c..5a36dc2 100644
+index c41e971ce33..fddec5c52a6 100644
 --- a/src/panfrost/vulkan/panvk_cmd_draw.h
 +++ b/src/panfrost/vulkan/panvk_cmd_draw.h
-@@ -262,6 +262,11 @@ struct panvk_cmd_graphics_state {
+@@ -263,6 +263,11 @@ struct panvk_cmd_graphics_state {
           uint32_t attrib_count;
           bool valid;
        } attr_key;

@@ -1,7 +1,7 @@
-From b3dfa18da0401c5c51c7cd69e5bb8a360317f443 Mon Sep 17 00:00:00 2001
+From 6806fb4f8d03c19158a0fd7820f7690fcac47d5b Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 03:53:51 +0300
-Subject: [PATCH 35/36] panvk/jm: one index range helper job per batch
+Subject: [PATCH 35/69] panvk/jm: one index range helper job per batch
 
 Every small direct indexed draw had its own helper job (find the index
 range, patch the draw's descriptors). Hoisted to the head of the batch they
@@ -36,10 +36,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  7 files changed, 202 insertions(+), 7 deletions(-)
 
 diff --git a/src/panfrost/libpan/draw_helper.cl b/src/panfrost/libpan/draw_helper.cl
-index 57cf2d3..a0e9323 100644
+index 13088e99331..e18c2eb311c 100644
 --- a/src/panfrost/libpan/draw_helper.cl
 +++ b/src/panfrost/libpan/draw_helper.cl
-@@ -1676,6 +1676,58 @@ panlib_draw_indexed_indirect_minmax_helper(
+@@ -1667,6 +1667,58 @@ panlib_draw_indexed_indirect_minmax_helper(
        tiler_job);
  }
  
@@ -99,7 +99,7 @@ index 57cf2d3..a0e9323 100644
   * left how many complete primitives it emitted and a staging record for
   * every vertex slot. Capture order is draw order, which is invocation order:
 diff --git a/src/panfrost/libpan/draw_helper.h b/src/panfrost/libpan/draw_helper.h
-index 58a5c89..d2a834a 100644
+index 58a5c89b516..d2a834a6917 100644
 --- a/src/panfrost/libpan/draw_helper.h
 +++ b/src/panfrost/libpan/draw_helper.h
 @@ -26,6 +26,33 @@ enum panlib_varying_buf_id {
@@ -137,7 +137,7 @@ index 58a5c89..d2a834a 100644
      uint32_t min;
      uint32_t max;
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index bab88ea..2401b4c 100644
+index e3cc438394d..2e9537d63dd 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -58,6 +58,11 @@ struct panvk_batch {
@@ -153,7 +153,7 @@ index bab88ea..2401b4c 100644
     struct {
        struct pan_ptr desc;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index d5e4c0f..bb6914d 100644
+index 9263e4082c4..a22991cbdb6 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 @@ -21,6 +21,8 @@
@@ -165,7 +165,7 @@ index d5e4c0f..bb6914d 100644
  #include "panvk_cmd_push_constant.h"
  #include "panvk_device.h"
  #include "panvk_entrypoints.h"
-@@ -243,9 +245,42 @@ panvk_per_arch(jc_add_hoisted)(struct panvk_batch *batch, unsigned type,
+@@ -244,9 +246,42 @@ panvk_per_arch(jc_add_hoisted)(struct panvk_batch *batch, unsigned type,
     return index;
  }
  
@@ -208,7 +208,7 @@ index d5e4c0f..bb6914d 100644
     if (!batch->hoist_jc.first_job || !batch->vtc_jc.first_job)
        return;
  
-@@ -660,6 +695,9 @@ panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf)
+@@ -661,6 +696,9 @@ panvk_per_arch(cmd_open_batch)(struct panvk_cmd_buffer *cmdbuf)
  #endif
     cmdbuf->cur_batch->event_ops = UTIL_DYNARRAY_INIT;
     cmdbuf->cur_batch->vary_infos = UTIL_DYNARRAY_INIT;
@@ -218,7 +218,7 @@ index d5e4c0f..bb6914d 100644
     /* jm-v7 106: with per-half indirect varying buffers, every batch takes
      * its own allocator, in the buffer of its heap half. */
  #if PAN_ARCH < 9
-@@ -724,6 +762,9 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
+@@ -762,6 +800,9 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
  #endif
        util_dynarray_fini(&batch->event_ops);
        util_dynarray_fini(&batch->vary_infos);
@@ -228,7 +228,7 @@ index d5e4c0f..bb6914d 100644
  
        vk_free(&cmdbuf->vk.pool->alloc, batch);
     }
-@@ -754,6 +795,9 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
+@@ -792,6 +833,9 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
  #endif
        util_dynarray_fini(&batch->event_ops);
        util_dynarray_fini(&batch->vary_infos);
@@ -239,7 +239,7 @@ index d5e4c0f..bb6914d 100644
        vk_free(&cmdbuf->vk.pool->alloc, batch);
     }
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index 9d22523..6d3122c 100644
+index 065d2bfd8b4..01a5191d0a8 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3359,7 +3359,26 @@ panvk_cmd_draw_indirect(struct panvk_cmd_buffer *cmdbuf,
@@ -342,7 +342,7 @@ index 9d22523..6d3122c 100644
        batch = panvk_per_arch(cmd_open_batch)(cmdbuf);
        cmdbuf->state.gfx.vs.indirect_varying_bufs_infos = 0;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 6abb68c..b17a9ce 100644
+index 6abb68cba9f..b17a9ce2d53 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -260,6 +260,13 @@ panvk_gprof_report_locked(uint64_t now)
@@ -360,7 +360,7 @@ index 6abb68c..b17a9ce 100644
     for (unsigned r = 0; r < 16; r++) {
        int best = -1;
 diff --git a/src/panfrost/vulkan/panvk_priv_bo.h b/src/panfrost/vulkan/panvk_priv_bo.h
-index fd1ed65..4a09635 100644
+index 460ea42a656..7b077bd58c4 100644
 --- a/src/panfrost/vulkan/panvk_priv_bo.h
 +++ b/src/panfrost/vulkan/panvk_priv_bo.h
 @@ -54,6 +54,10 @@ struct panvk_mem_stats {

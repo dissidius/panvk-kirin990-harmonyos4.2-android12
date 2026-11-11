@@ -1,7 +1,7 @@
-From cb882f2b7275f538279e009b94493ba3ceaec8ee Mon Sep 17 00:00:00 2001
+From 7ce2dc4bdfe2013844be414e7d9480637575098e Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Tue, 27 Oct 2026 15:01:10 +0300
-Subject: [PATCH 39/39] panvk: no sync object payload copy on kbase
+Subject: [PATCH 39/69] panvk: no sync object payload copy on kbase
 
 kbase emulates DRM sync objects without SYNCOBJ_TRANSFER, so
 vk_drm_syncobj_copy_payloads() always failed with VK_ERROR_UNKNOWN. The
@@ -20,10 +20,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 9 insertions(+)
 
 diff --git a/src/panfrost/vulkan/panvk_vX_device.c b/src/panfrost/vulkan/panvk_vX_device.c
-index 4c15eff..acd32a7 100644
+index 87c13bee676..05155d46d7b 100644
 --- a/src/panfrost/vulkan/panvk_vX_device.c
 +++ b/src/panfrost/vulkan/panvk_vX_device.c
-@@ -738,6 +738,15 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
+@@ -857,6 +857,15 @@ panvk_per_arch(create_device)(struct panvk_physical_device *physical_device,
     device->vk.check_status = panvk_device_check_status;
     device->vk.get_timestamp = panvk_device_get_timestamp;
     device->vk.copy_sync_payloads = vk_drm_syncobj_copy_payloads;

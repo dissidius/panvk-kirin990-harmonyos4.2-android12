@@ -1,7 +1,7 @@
-From e53ed5c178d29ab4349f03d46cee935f14bc7df1 Mon Sep 17 00:00:00 2001
+From 32297ceff3bfb38892115fee2a899a375ee1cbd7 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 28 Oct 2026 20:44:23 +0300
-Subject: [PATCH 45/45] panvk/jm: GPU profile dumps the last 128 atoms on the
+Subject: [PATCH 45/69] panvk/jm: GPU profile dumps the last 128 atoms on the
  first failure
 
 With PANVK_GPU_PROF=1, each submitted atom is recorded (submit and
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 65 insertions(+)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index 3a8385b..8757c38 100644
+index 3a8385bc70e..8757c38b72a 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -163,12 +163,59 @@ panvk_reset_issued_batch(struct panvk_cmd_buffer *cmdbuf,

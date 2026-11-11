@@ -1,8 +1,8 @@
-From 51ff0a088229376b4913b9504eb023c5771ac879 Mon Sep 17 00:00:00 2001
+From d15cd8b9e6fb5af7ee1abc19f2571faaf70a22c7 Mon Sep 17 00:00:00 2001
 From: soulexit <b@l>
 Date: Sun, 25 Oct 2026 11:36:58 +0300
-Subject: [PATCH] panvk: Samsung linear gralloc fallback and failed-atom batch
- diagnostics
+Subject: [PATCH 10/69] panvk: Samsung linear gralloc fallback and failed-atom
+ batch diagnostics
 
 ---
  src/panfrost/lib/kmod/kbase_kmod.c          |  7 ++++-
@@ -14,10 +14,10 @@ Subject: [PATCH] panvk: Samsung linear gralloc fallback and failed-atom batch
  6 files changed, 82 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 4955a4c..917d39e 100644
+index 29182b35efe..1db0789fac1 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -2313,6 +2313,8 @@ kbase_diag_untrack(const void *bo)
+@@ -2311,6 +2311,8 @@ kbase_diag_untrack(const void *bo)
     simple_mtx_unlock(&kbase_diag_lock);
  }
  
@@ -26,7 +26,7 @@ index 4955a4c..917d39e 100644
  void
  kbase_kmod_diag_sample_imports(const char *why)
  {
-@@ -3251,9 +3253,12 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
+@@ -3249,9 +3251,12 @@ kbase_atom_process_event_locked(struct kbase_kmod_dev *kd,
           struct kbase_atom_slot *s = &kd->atoms[i];
           s->completed = true;
           s->errored = errored;
@@ -41,7 +41,7 @@ index 4955a4c..917d39e 100644
              s->atom_number = 0;
           return;
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
-index b4d4b09..43559e9 100644
+index b4d4b095e0e..43559e906dd 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.h
 +++ b/src/panfrost/lib/kmod/kbase_kmod.h
 @@ -152,6 +152,7 @@ int kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
@@ -53,7 +53,7 @@ index b4d4b09..43559e9 100644
  int kbase_kmod_csf_export_cqs64_fence(struct pan_kmod_dev *dev,
                                        const uint64_t *addrs,
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index 6c46f16..6171ae2 100644
+index 02faf1076fb..39373603881 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -85,6 +85,11 @@ struct panvk_batch {
@@ -69,7 +69,7 @@ index 6c46f16..6171ae2 100644
  
  enum panvk_cmd_event_op_type {
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
-index fc37cc0..3e7a914 100644
+index 778048dbff9..677223d304f 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
 @@ -3164,6 +3164,22 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_data *draw)
@@ -96,7 +96,7 @@ index fc37cc0..3e7a914 100644
                                  draw->info.instance.count, 1, 1, 1, true,
                                  false);
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
-index cb0d856..103185f 100644
+index cb0d8562252..103185f92d7 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_gpu_queue.c
 @@ -156,6 +156,35 @@ panvk_reset_issued_batch(struct panvk_cmd_buffer *cmdbuf,
@@ -152,7 +152,7 @@ index cb0d856..103185f 100644
           queue->last_frag_atom = frag_atom; queue->last_any_atom = frag_atom;
           if (!vtc_atom) {
 diff --git a/src/util/u_gralloc/u_gralloc_fallback.c b/src/util/u_gralloc/u_gralloc_fallback.c
-index 9a85d1c..37b0438 100644
+index 9a85d1c966d..37b0438a0af 100644
 --- a/src/util/u_gralloc/u_gralloc_fallback.c
 +++ b/src/util/u_gralloc/u_gralloc_fallback.c
 @@ -682,6 +682,29 @@ fallback_gralloc_get_buffer_info(struct u_gralloc *gralloc,

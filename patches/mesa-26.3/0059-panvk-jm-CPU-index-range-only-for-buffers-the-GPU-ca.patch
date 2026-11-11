@@ -1,0 +1,76 @@
+From 0871a4c5830b101213921d9c7d0b8287cd50f0d9 Mon Sep 17 00:00:00 2001
+From: soulexit <metehan.tanriverdi01@gmail.com>
+Date: Wed, 4 Nov 2026 00:15:55 +0300
+Subject: [PATCH 59/60] panvk/jm: CPU index range only for buffers the GPU
+ cannot write
+
+The opt-in CPU index range search (PANVK_V7_CPU_INDEX_RANGE=1) read the
+indices when the draw was recorded, so a buffer the GPU writes before
+the draw executes (a copy into it, for example) gave a stale range:
+CTS indexed_draw.update_index_buffer_before_draw_32 failed with it on.
+Index buffers with a usage through which the GPU could write them
+(transfer destination, storage, transform feedback, device address)
+now keep the GPU search, the rule the Exynos 9611 driver (JimVulkan
+mali-panvk base) uses by default.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c |  5 +++++
+ src/panfrost/vulkan/panvk_cmd_draw.h       |  3 +++
+ src/panfrost/vulkan/panvk_vX_cmd_draw.c    | 10 ++++++++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
+index 563886f..09f5ca0 100644
+--- a/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
++++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_draw.c
+@@ -4373,6 +4373,11 @@ cpu_index_range_draw(struct panvk_cmd_buffer *cmdbuf, uint32_t indexCount,
+    const uint32_t isz = cmdbuf->state.gfx.ib.index_size;
+    if (!mem)
+       CPU_INDEX_REJECT("no index buffer memory");
++   /* A buffer the GPU may write (copy destination, storage, xfb, device
++    * address) can hold indices the CPU can't see yet when the draw is
++    * recorded. */
++   if (!cmdbuf->state.gfx.ib.cpu_written_only)
++      CPU_INDEX_REJECT("index buffer writable by the GPU");
+    /* Memory the application has not mapped (a static index buffer filled
+     * by a copy) is read through a mapping of the driver's own. */
+    const uint8_t *ib_host = panvk_device_memory_cpu_ptr(mem);
+diff --git a/src/panfrost/vulkan/panvk_cmd_draw.h b/src/panfrost/vulkan/panvk_cmd_draw.h
+index dd2b6f6..4bedba0 100644
+--- a/src/panfrost/vulkan/panvk_cmd_draw.h
++++ b/src/panfrost/vulkan/panvk_cmd_draw.h
+@@ -373,6 +373,9 @@ struct panvk_cmd_graphics_state {
+       /* The bound buffer's memory and offset in it (jm-v7 104). */
+       struct panvk_device_memory *mem;
+       uint64_t mem_offset;
++      /* No usage lets the GPU write the buffer: its contents at execution
++       * are what the CPU wrote (jm-v7 104). */
++      bool cpu_written_only;
+ #endif
+    } ib;
+ 
+diff --git a/src/panfrost/vulkan/panvk_vX_cmd_draw.c b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
+index 93a5e43..ec443ae 100644
+--- a/src/panfrost/vulkan/panvk_vX_cmd_draw.c
++++ b/src/panfrost/vulkan/panvk_vX_cmd_draw.c
+@@ -1196,6 +1196,16 @@ panvk_per_arch(CmdBindIndexBuffer2)(VkCommandBuffer commandBuffer,
+ #if PAN_ARCH < 9
+       cmdbuf->state.gfx.ib.mem = buf->mem;
+       cmdbuf->state.gfx.ib.mem_offset = buf->mem_offset + offset;
++      /* Every usage through which the GPU could write the buffer (same rule
++       * as the Exynos 9611 driver). */
++      const VkBufferUsageFlags2KHR gpu_writes =
++         VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR |
++         VK_BUFFER_USAGE_2_STORAGE_TEXEL_BUFFER_BIT_KHR |
++         VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR |
++         VK_BUFFER_USAGE_2_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT |
++         VK_BUFFER_USAGE_2_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT |
++         VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
++      cmdbuf->state.gfx.ib.cpu_written_only = !(buf->vk.usage & gpu_writes);
+ #endif
+    } else {
+ #if PAN_ARCH < 9
+-- 
+2.43.0
+

@@ -1,7 +1,7 @@
-From 4832ed03d4894793552c628a6e59ea9d270ff602 Mon Sep 17 00:00:00 2001
+From b97372ad0658c88e6aafa78b7944f0b7f6d6758e Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Wed, 4 Nov 2026 00:15:55 +0300
-Subject: [PATCH 58/60] pan/kmod/kbase: query and set a BO's committed size,
+Subject: [PATCH 58/69] pan/kmod/kbase: query and set a BO's committed size,
  count atoms in flight
 
 kbase_kmod_bo_committed_bytes() (KBASE_IOCTL_MEM_QUERY) returns the
@@ -20,10 +20,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  2 files changed, 65 insertions(+)
 
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
-index 70f515c..49e1810 100644
+index e452791d8a2..429c7d5d386 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.c
 +++ b/src/panfrost/lib/kmod/kbase_kmod.c
-@@ -3636,6 +3636,62 @@ kbase_kmod_jm_clean_imports(struct pan_kmod_dev *dev)
+@@ -3634,6 +3634,62 @@ kbase_kmod_jm_clean_imports(struct pan_kmod_dev *dev)
     simple_mtx_unlock(&kd->nc_lock);
  }
  
@@ -87,7 +87,7 @@ index 70f515c..49e1810 100644
  kbase_kmod_wait_atom(struct pan_kmod_dev *dev, uint64_t atom_number,
                       int64_t timeout_ns)
 diff --git a/src/panfrost/lib/kmod/kbase_kmod.h b/src/panfrost/lib/kmod/kbase_kmod.h
-index fdab8e9..ce64955 100644
+index fdab8e9a64b..ce649557f14 100644
 --- a/src/panfrost/lib/kmod/kbase_kmod.h
 +++ b/src/panfrost/lib/kmod/kbase_kmod.h
 @@ -51,6 +51,15 @@ bool kbase_kmod_job_submit_retry(struct pan_kmod_dev *dev, uint64_t jc,

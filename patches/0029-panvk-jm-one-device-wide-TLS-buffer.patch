@@ -1,7 +1,7 @@
-From 229070edd9cfe96bf295e9435841f21b152c4fb8 Mon Sep 17 00:00:00 2001
+From b9f9693d1d3249498212ee7ea235d5bd6c93cda3 Mon Sep 17 00:00:00 2001
 From: soulexit <metehan.tanriverdi01@gmail.com>
 Date: Mon, 26 Oct 2026 13:52:33 +0300
-Subject: [PATCH 29/36] panvk/jm: one device-wide TLS buffer
+Subject: [PATCH 29/69] panvk/jm: one device-wide TLS buffer
 
 Every JM command buffer allocated its own stack buffer (one per heap
 half), sized for all GPU threads. NieR:Automata's 960-thread compute
@@ -19,7 +19,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  2 files changed, 85 insertions(+), 1 deletion(-)
 
 diff --git a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
-index e0ee48e..af2169e 100644
+index 11e2fc59a84..d031626465e 100644
 --- a/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 +++ b/src/panfrost/vulkan/jm/panvk_cmd_buffer.h
 @@ -126,6 +126,9 @@ struct panvk_cmd_buffer {
@@ -33,7 +33,7 @@ index e0ee48e..af2169e 100644
     struct list_head push_sets;
     struct panvk_batch *cur_batch;
 diff --git a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
-index 3792412..a2afb92 100644
+index 4eeaf08bc29..b7371be16d2 100644
 --- a/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 +++ b/src/panfrost/vulkan/jm/panvk_vX_cmd_buffer.c
 @@ -28,6 +28,7 @@
@@ -44,7 +44,7 @@ index 3792412..a2afb92 100644
  
  #include "pan_desc.h"
  #include "pan_encoder.h"
-@@ -92,6 +93,80 @@ panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf, uint64_t fbd)
+@@ -93,6 +94,80 @@ panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf, uint64_t fbd)
  
  static void cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf);
  
@@ -125,7 +125,7 @@ index 3792412..a2afb92 100644
  void
  panvk_per_arch(cmd_close_batch)(struct panvk_cmd_buffer *cmdbuf)
  {
-@@ -184,7 +259,9 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
+@@ -185,7 +260,9 @@ cmd_close_batch_impl(struct panvk_cmd_buffer *cmdbuf)
                                                 thread_tls_alloc, core_id_range);
        /* jm-v7 107: reuse this half's buffer when it is large enough. */
        const unsigned h = batch->heap_half & 1;
@@ -136,7 +136,7 @@ index 3792412..a2afb92 100644
            cmdbuf->tls_half[h].tls_size >= size) {
           batch->tlsinfo.tls.ptr = cmdbuf->tls_half[h].tls_ptr;
        } else {
-@@ -589,6 +666,7 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
+@@ -627,6 +704,7 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
     panvk_pool_reset(&cmdbuf->desc_pool);
     panvk_pool_reset(&cmdbuf->tls_pool);
     memset(cmdbuf->tls_half, 0, sizeof(cmdbuf->tls_half));
@@ -144,7 +144,7 @@ index 3792412..a2afb92 100644
     panvk_pool_reset(&cmdbuf->varying_pool);
     panvk_pool_reset(&cmdbuf->gs_pool);
     panvk_cmd_buffer_obj_list_reset(cmdbuf, push_sets);
-@@ -621,6 +699,8 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
+@@ -659,6 +737,8 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
  
     panvk_pool_cleanup(&cmdbuf->desc_pool);
     panvk_pool_cleanup(&cmdbuf->tls_pool);
@@ -153,7 +153,7 @@ index 3792412..a2afb92 100644
     panvk_pool_cleanup(&cmdbuf->varying_pool);
     panvk_pool_cleanup(&cmdbuf->gs_pool);
     panvk_cmd_buffer_obj_list_cleanup(cmdbuf, push_sets);
-@@ -682,6 +762,7 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool, VkCommandBufferLevel level,
+@@ -720,6 +800,7 @@ panvk_create_cmdbuf(struct vk_command_pool *vk_pool, VkCommandBufferLevel level,
        .owns_bos = true,
        .needs_locking = false,
     };
