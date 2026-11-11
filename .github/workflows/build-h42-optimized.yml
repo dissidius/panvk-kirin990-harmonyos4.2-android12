@@ -1,6 +1,15 @@
 name: H42 Kirin990 Atom72 and universal rotation (cached Android ARM64)
 on:
   workflow_dispatch:
+  push:
+    branches: [harmony42-rotation-universal-optimized-ci]
+    paths:
+      - '.github/workflows/build-h42-optimized.yml'
+      - 'ci/h42-run-container.sh'
+      - 'ci/h42-build-rotation-universal.sh'
+      - 'scripts/prepare-tree.sh'
+      - 'scripts/build-android.sh'
+      - 'harmony42/**'
 
 permissions:
   contents: read
