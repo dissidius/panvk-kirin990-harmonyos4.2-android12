@@ -1,0 +1,130 @@
+name: H42 Kirin990 Atom72 and universal rotation (cached Android ARM64)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: h42-kirin990-optimized-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    steps:
+      - name: Checkout guarded rotation test branch
+        uses: actions/checkout@v4
+
+      - name: Restore pinned NDK r28c
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/28.2.13676358
+          key: panvk-kirin990-ndk-r28c-28.2.13676358-linux-v1
+
+      - name: Reuse NDK r28c without downloading if already present
+        shell: bash
+        timeout-minutes: 7
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          if [ ! -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -Vr | head -n1)"
+            test -x "$SDKMANAGER"
+            timeout 390s "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'ndk;28.2.13676358'
+          fi
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
+          grep -Eq '^Pkg.Revision[[:space:]]*=[[:space:]]*28.2.13676358' "$NDK/source.properties"
+
+      - name: Restore pinned Mesa and Zenithblue git objects
+        id: sources
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            work/mesa/.git
+            work/zenithblue/.git
+          key: h42-kirin990-src-v2-${{ runner.os }}-${{ hashFiles('scripts/prepare-tree.sh', 'patches/base/**', 'patches/00*.patch') }}
+
+      - name: Prepare pinned Mesa 27 and all PanVK patches
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          sh scripts/prepare-tree.sh "$GITHUB_WORKSPACE/work"
+          git -C work/mesa status --porcelain | head -n 15
+
+      - name: Cache git objects before driver compilation
+        if: success() && steps.sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            work/mesa/.git
+            work/zenithblue/.git
+          key: h42-kirin990-src-v2-${{ runner.os }}-${{ hashFiles('scripts/prepare-tree.sh', 'patches/base/**', 'patches/00*.patch') }}
+
+      - name: Restore native Mesa code generators and Android dependencies
+        id: native-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            work/build/host-tools
+            work/zenithblue/work/android-deps
+          key: h42-kirin990-native-v1-${{ runner.os }}-${{ hashFiles('scripts/build-android.sh', 'patches/base/**') }}
+
+      - name: Restore ccache and Rust crate download cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-ccache
+            .h42-cargo
+          key: h42-kirin990-ccache-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            h42-kirin990-ccache-v1-${{ runner.os }}-
+
+      - name: Build universal rotation driver using published toolchain
+        timeout-minutes: 19
+        shell: bash
+        env:
+          H42_GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ci/h42-run-container.sh
+
+      - name: Save native code generator / Android dependency outputs
+        if: success() && steps.native-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            work/build/host-tools
+            work/zenithblue/work/android-deps
+          key: h42-kirin990-native-v1-${{ runner.os }}-${{ hashFiles('scripts/build-android.sh', 'patches/base/**') }}
+
+      - name: Save updated ccache and Cargo downloads
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-ccache
+            .h42-cargo
+          key: h42-kirin990-ccache-v1-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload standard and ARMSX2 driver ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: panvk-kirin990-h42-atom72-rotfix2-optimized-arm64
+          path: |
+            work/dist/*ciopt1*.zip
+            work/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Meson logs when driver compilation fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panvk-kirin990-h42-build-logs
+          path: |
+            work/build/host-tools/meson-logs
+            work/build/android/meson-logs
+          if-no-files-found: ignore
+          retention-days: 7
